@@ -16,7 +16,7 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
 	view := (modelState{tab: 3}).View()
-	for _, expected := range []string{"[4 Findings]", "No findings.", "1-4: tabs"} {
+	for _, expected := range []string{"[4 Findings]", "No findings.", "1-5: tabs"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}

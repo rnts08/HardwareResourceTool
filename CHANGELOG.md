@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-08-15
+
+- Added PCIe device topology and current/max link information.
+- Added SMBIOS Type 17 DIMM inventory and EDAC error counters.
+- Added NVIDIA GPU PCI identity discovery and a hardware inventory TUI tab.
+- Added hardware implementation documentation and vendor-neutral data-source boundaries.
+
 ## 0.2.2 — 2026-08-15
 
 - Added configurable analysis thresholds to `check` and `report`.

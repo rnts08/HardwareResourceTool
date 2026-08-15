@@ -53,6 +53,7 @@ func WriteText(w io.Writer, result model.Report) error {
 	for _, network := range result.Snapshot.Networks {
 		fmt.Fprintf(w, "Network: %s %s %.1f/%.1f KiB/s, speed %d Mb/s, rings %d/%d\n", network.Name, network.State, network.RXBytesPerSec/1024, network.TXBytesPerSec/1024, network.LinkSpeedMbps, network.RXRingSize, network.TXRingSize)
 	}
+	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
 	fmt.Fprintf(w, "Findings: %d\n", len(result.Findings))
 	for _, finding := range result.Findings {
 		fmt.Fprintf(w, "- [%s] %s: %s\n  Recommendation: %s\n", finding.Severity, finding.Title, finding.Evidence, finding.Recommendation)

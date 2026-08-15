@@ -5,15 +5,18 @@ import "time"
 const SchemaVersion = "1"
 
 type Snapshot struct {
-	CollectedAt time.Time      `json:"collected_at"`
-	CPU         CPU            `json:"cpu"`
-	Memory      Memory         `json:"memory"`
-	Disks       []Disk         `json:"disks"`
-	Filesystems []Filesystem   `json:"filesystems"`
-	Networks    []Network      `json:"networks"`
-	NUMA        NUMA           `json:"numa"`
-	System      SystemSettings `json:"system"`
-	Errors      []string       `json:"collector_errors"`
+	CollectedAt   time.Time      `json:"collected_at"`
+	CPU           CPU            `json:"cpu"`
+	Memory        Memory         `json:"memory"`
+	Disks         []Disk         `json:"disks"`
+	Filesystems   []Filesystem   `json:"filesystems"`
+	Networks      []Network      `json:"networks"`
+	PCI           []PCIDevice    `json:"pci_devices"`
+	MemoryDevices []MemoryDevice `json:"memory_devices"`
+	GPUs          []GPU          `json:"gpus"`
+	NUMA          NUMA           `json:"numa"`
+	System        SystemSettings `json:"system"`
+	Errors        []string       `json:"collector_errors"`
 }
 
 type CPU struct {
@@ -79,6 +82,44 @@ type Filesystem struct {
 	AvailableBytes uint64  `json:"available_bytes"`
 	UsedPercent    float64 `json:"used_percent"`
 	ReadOnly       bool    `json:"read_only"`
+}
+
+type PCIDevice struct {
+	Address          string `json:"address"`
+	VendorID         string `json:"vendor_id"`
+	DeviceID         string `json:"device_id"`
+	Class            string `json:"class"`
+	Driver           string `json:"driver,omitempty"`
+	NUMANode         int64  `json:"numa_node"`
+	IOMMUGroup       string `json:"iommu_group,omitempty"`
+	CurrentLinkSpeed string `json:"current_link_speed,omitempty"`
+	CurrentLinkWidth int64  `json:"current_link_width,omitempty"`
+	MaxLinkSpeed     string `json:"max_link_speed,omitempty"`
+	MaxLinkWidth     int64  `json:"max_link_width,omitempty"`
+}
+
+type GPU struct {
+	Address            string  `json:"address"`
+	VendorID           string  `json:"vendor_id"`
+	DeviceID           string  `json:"device_id"`
+	Name               string  `json:"name,omitempty"`
+	MemoryBytes        uint64  `json:"memory_bytes,omitempty"`
+	UtilizationPercent float64 `json:"utilization_percent,omitempty"`
+	TemperatureCelsius float64 `json:"temperature_celsius,omitempty"`
+	NVML               bool    `json:"nvml_available"`
+}
+
+type MemoryDevice struct {
+	Locator            string `json:"locator,omitempty"`
+	Manufacturer       string `json:"manufacturer,omitempty"`
+	PartNumber         string `json:"part_number,omitempty"`
+	Serial             string `json:"serial,omitempty"`
+	Type               string `json:"type,omitempty"`
+	SizeBytes          uint64 `json:"size_bytes"`
+	SpeedMTs           uint64 `json:"speed_mts,omitempty"`
+	ConfiguredSpeedMTs uint64 `json:"configured_speed_mts,omitempty"`
+	CorrectedErrors    uint64 `json:"corrected_errors,omitempty"`
+	UncorrectedErrors  uint64 `json:"uncorrected_errors,omitempty"`
 }
 
 type NUMA struct {

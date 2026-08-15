@@ -99,6 +99,46 @@ func TestCollectSystemReadsSelectedSysctls(t *testing.T) {
 	}
 }
 
+func TestParseSMBIOSMemoryDevice(t *testing.T) {
+	formatted := make([]byte, 0x22)
+	formatted[0] = 17
+	formatted[1] = 0x22
+	formatted[0x0c] = 0x00
+	formatted[0x0d] = 0x20 // 8192 MiB
+	formatted[0x10] = 1    // locator
+	formatted[0x12] = 2    // memory type
+	formatted[0x15] = 0x00
+	formatted[0x16] = 0x0c // 3072 MT/s
+	formatted[0x17] = 3    // manufacturer
+	formatted[0x18] = 4    // serial
+	formatted[0x1a] = 5    // part number
+	formatted[0x20] = 0x00
+	formatted[0x21] = 0x0c
+	data := append(formatted, []byte("DIMM_A1\x00DDR5\x00Vendor\x001234\x00PART-1\x00\x00")...)
+	devices := parseSMBIOSMemory(data)
+	if len(devices) != 1 || devices[0].Locator != "DIMM_A1" || devices[0].SizeBytes != 8*1024*1024*1024 || devices[0].ConfiguredSpeedMTs != 3072 {
+		t.Fatalf("unexpected SMBIOS devices: %#v", devices)
+	}
+}
+
+func TestCollectPCIAndNVIDIAIdentity(t *testing.T) {
+	sys := t.TempDir()
+	device := filepath.Join(sys, "bus/pci/devices/0000:01:00.0")
+	writeFixture(t, device, "vendor", "0x10de\n")
+	writeFixture(t, device, "device", "0x1db6\n")
+	writeFixture(t, device, "class", "0x030200\n")
+	writeFixture(t, device, "numa_node", "1\n")
+	writeFixture(t, device, "current_link_speed", "16.0 GT/s PCIe\n")
+	writeFixture(t, device, "current_link_width", "16\n")
+	snapshot := model.Snapshot{PCI: []model.PCIDevice{}, GPUs: []model.GPU{}}
+	if err := (&Collector{sysRoot: sys}).collectPCI(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.PCI) != 1 || len(snapshot.GPUs) != 1 || snapshot.GPUs[0].Address != "0000:01:00.0" {
+		t.Fatalf("unexpected PCI/GPU inventory: %#v %#v", snapshot.PCI, snapshot.GPUs)
+	}
+}
+
 func writeFixture(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

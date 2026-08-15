@@ -40,7 +40,7 @@ func New() *Collector {
 
 func (c *Collector) Snapshot() model.Snapshot {
 	now := time.Now().UTC()
-	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Filesystems: []model.Filesystem{}, Networks: []model.Network{}, Errors: []string{}}
+	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Filesystems: []model.Filesystem{}, Networks: []model.Network{}, PCI: []model.PCIDevice{}, MemoryDevices: []model.MemoryDevice{}, GPUs: []model.GPU{}, Errors: []string{}}
 	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}}
 
 	if err := c.collectCPU(&snapshot, &current); err != nil {
@@ -59,6 +59,9 @@ func (c *Collector) Snapshot() model.Snapshot {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if err := c.collectSystem(&snapshot, &current); err != nil {
+		snapshot.Errors = append(snapshot.Errors, err.Error())
+	}
+	if err := c.collectHardware(&snapshot); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 

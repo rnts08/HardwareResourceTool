@@ -27,7 +27,7 @@ type modelState struct {
 	height    int
 }
 
-var tabs = []string{"Overview", "Storage", "Network", "Findings"}
+var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware"}
 
 func Run(collector *collect.Collector, interval time.Duration) error {
 	_, err := tea.NewProgram(modelState{collector: collector, interval: interval}).Run()
@@ -42,7 +42,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "1", "2", "3", "4":
+		case "1", "2", "3", "4", "5":
 			m.tab = int(msg.String()[0] - '1')
 		case "tab", "right", "l":
 			m.tab = (m.tab + 1) % len(tabs)
@@ -84,6 +84,8 @@ func (m modelState) View() string {
 		viewNetwork(&b, m.snapshot)
 	case 3:
 		viewFindings(&b, m.findings)
+	case 4:
+		viewHardware(&b, m.snapshot)
 	default:
 		viewOverview(&b, m.snapshot, m.history)
 	}
@@ -91,7 +93,7 @@ func (m modelState) View() string {
 	if len(m.snapshot.Errors) > 0 {
 		fmt.Fprintf(&b, "\nCollector errors: %s\n", strings.Join(m.snapshot.Errors, "; "))
 	}
-	b.WriteString("\n1-4: tabs  h/left: previous  l/right/tab: next  q: quit")
+	b.WriteString("\n1-5: tabs  h/left: previous  l/right/tab: next  q: quit")
 	return fitView(b.String(), m.width, m.height)
 }
 
@@ -172,6 +174,21 @@ func viewFindings(b *strings.Builder, findings []model.Finding) {
 	}
 	for _, finding := range findings {
 		fmt.Fprintf(b, "  [%s] %s\n    %s\n    Recommendation: %s\n", finding.Severity, finding.Title, finding.Evidence, finding.Recommendation)
+	}
+}
+
+func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
+	b.WriteString("PCIe devices\n")
+	for _, device := range snapshot.PCI {
+		fmt.Fprintf(b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.Driver)
+	}
+	b.WriteString("\nNVIDIA GPUs\n")
+	for _, gpu := range snapshot.GPUs {
+		fmt.Fprintf(b, "  %-16s %s:%s NVML %t\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVML)
+	}
+	b.WriteString("\nMemory devices\n")
+	for _, memory := range snapshot.MemoryDevices {
+		fmt.Fprintf(b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)
 	}
 }
 

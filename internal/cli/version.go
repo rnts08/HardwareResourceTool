@@ -8,7 +8,7 @@ import (
 )
 
 // Release builds can set all three values with -ldflags.
-var version = "0.2.2"
+var version = "0.2.3"
 var buildCommit = "unknown"
 var buildDate = "unknown"
 

@@ -32,6 +32,7 @@ type rawCounters struct {
 	numaRemote                                      uint64
 	disks                                           map[string]diskCounter
 	networks                                        map[string]networkCounter
+	virtualProcesses                                map[int]virtualProcessCounter
 }
 
 type diskCounter struct{ reads, sectorsRead, writes, sectorsWritten, inFlight uint64 }
@@ -44,7 +45,7 @@ func New() *Collector {
 func (c *Collector) Snapshot() model.Snapshot {
 	now := time.Now().UTC()
 	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Filesystems: []model.Filesystem{}, Networks: []model.Network{}, PCI: []model.PCIDevice{}, MemoryDevices: []model.MemoryDevice{}, GPUs: []model.GPU{}, Errors: []string{}}
-	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}}
+	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}, virtualProcesses: map[int]virtualProcessCounter{}}
 
 	if err := c.collectCPU(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
@@ -64,7 +65,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectSystem(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectVirtualization(&snapshot); err != nil {
+	if err := c.collectVirtualization(&snapshot, &current, now.Sub(c.prevAt).Seconds()); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if !c.hardwareReady {

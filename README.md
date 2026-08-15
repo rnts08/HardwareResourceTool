@@ -62,9 +62,9 @@ collector lifetime. Dynamic counters continue to refresh at the selected
 interval, keeping the monitor overhead low enough for the default two-second
 TUI refresh.
 
-Release version: `0.6.0`. Release builds can override it with:
+Release version: `0.7.0`. Release builds can override it with:
 
 ```sh
-make linux VERSION=0.6.0
+make linux VERSION=0.7.0
 ```
  

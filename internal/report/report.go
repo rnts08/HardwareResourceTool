@@ -42,7 +42,16 @@ func WriteText(w io.Writer, result model.Report) error {
 	if result.Snapshot.Virtualization.QEMUDetected || result.Snapshot.Virtualization.KVMAvailable || len(result.Snapshot.Virtualization.VirtualMachines) > 0 {
 		fmt.Fprintf(w, "Virtualization: %s, VMs %d, allocated vCPU %d (%.2fx), memory %.1f GiB (%.2fx)\n", result.Snapshot.Virtualization.Hypervisor, len(result.Snapshot.Virtualization.VirtualMachines), result.Snapshot.Virtualization.AllocatedVCPUs, result.Snapshot.Virtualization.VCPUOvercommitRatio, float64(result.Snapshot.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), result.Snapshot.Virtualization.MemoryOvercommitRatio)
 		for _, vm := range result.Snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(w, "VM: %s %s vCPU %d memory %.1f GiB RSS %.1f MiB\n", vm.Name, vm.Source, vm.ConfiguredVCPUs, float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024))
+			fmt.Fprintf(w, "VM: %s %s running=%t vCPU %d CPU %.1f%% memory %.1f GiB current %.1f GiB RSS %.1f MiB I/O %.1f/%.1f MiB\n", vm.Name, vm.Source, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024))
+			for _, disk := range vm.Disks {
+				fmt.Fprintf(w, "  VM disk: %s %s (%s)\n", disk.Target, disk.Source, disk.Bus)
+			}
+			for _, nic := range vm.NICs {
+				fmt.Fprintf(w, "  VM NIC: %s %s host=%s rx %.1f/tx %.1f KiB/s MAC %s\n", nic.Target, nic.Source, nic.HostNetwork, nic.RXBytesPerSecond/1024, nic.TXBytesPerSecond/1024, nic.MAC)
+			}
+			if len(vm.PCIAddresses) > 0 {
+				fmt.Fprintf(w, "  VM PCI devices: %v\n", vm.PCIAddresses)
+			}
 		}
 	}
 	fmt.Fprintf(w, "Limits: current files %d, host/init files %d, current processes %d, host/init processes %d\n", result.Snapshot.System.OpenFiles, result.Snapshot.System.HostLimits.OpenFiles, result.Snapshot.System.MaxProcesses, result.Snapshot.System.HostLimits.MaxProcesses)

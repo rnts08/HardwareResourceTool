@@ -73,18 +73,20 @@ Acceptance: absent optional providers produce explicit availability state and no
 
 ## M0.2.9 — KVM/QEMU resource accounting
 
-Status: basic read-only host accounting implemented in `0.6.0`.
+Status: basic accounting implemented in `0.6.0`; deeper read-only usage and
+attachment accounting implemented in `0.7.0`.
 
 - Discover KVM availability and QEMU processes without shelling out to `virsh`.
 - Parse libvirt domain XML when readable, with QEMU command-line fallback.
 - Report configured vCPU/memory allocation separately from host physical
-  capacity and QEMU process RSS.
+  capacity, QEMU process RSS/CPU/I/O, and cgroup current/max memory.
 - Identify running versus configured domains and preserve source/uncertainty.
 - Add conservative CPU/memory overcommit findings; do not represent guest
   configured memory as actual resident guest memory.
 
-Remaining: cgroup-aware per-domain CPU/memory usage, balloon state, hugepage
-backing, NUMA placement, disk/network attachment accounting, and QMP metrics.
+Remaining: cgroup CPU aggregation, balloon state, hugepage backing, NUMA
+placement, and QMP metrics. QMP remains optional because the collector must
+not send mutating commands or assume socket access.
 
 ## Cross-cutting completion work
 

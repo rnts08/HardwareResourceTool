@@ -78,10 +78,13 @@ KVM availability is detected from the read-only `/sys/module/kvm` or
 `/dev/kvm` presence. Domain allocations come from readable libvirt XML under
 `/etc/libvirt/qemu`; when XML is unavailable, running QEMU command lines under
 `/proc` provide a fallback for VM name, vCPU, and memory arguments. QEMU
-process RSS is reported separately as host process usage. These values are not
-treated as guest actual usage: cgroup accounting, balloon state, NUMA pinning,
-and QMP metrics remain separate future work. No libvirt command, QMP command,
-or mutation is performed.
+process RSS is reported separately as host process usage. When cgroup v2 is
+available, current/max memory and aggregate read/write I/O are added; QEMU
+process CPU and `/proc/<pid>/io` are used as fallbacks. Disk, NIC, and PCI
+host-device attachments are retained, and bridge members are mapped back to
+physical NICs where possible. These values are not treated as guest actual
+usage: balloon state, NUMA pinning, and QMP metrics remain future work. No
+libvirt command, QMP command, or mutation is performed.
 
 ## Server vendors
 

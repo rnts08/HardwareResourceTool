@@ -161,13 +161,39 @@ type Virtualization struct {
 }
 
 type VirtualMachine struct {
-	Name                  string `json:"name"`
-	PID                   int    `json:"pid,omitempty"`
-	ConfiguredVCPUs       int64  `json:"configured_vcpus,omitempty"`
-	ConfiguredMemoryBytes uint64 `json:"configured_memory_bytes,omitempty"`
-	ProcessRSSBytes       uint64 `json:"process_rss_bytes,omitempty"`
-	Running               bool   `json:"running"`
-	Source                string `json:"source,omitempty"`
+	Name                  string        `json:"name"`
+	PID                   int           `json:"pid,omitempty"`
+	ConfiguredVCPUs       int64         `json:"configured_vcpus,omitempty"`
+	ConfiguredMemoryBytes uint64        `json:"configured_memory_bytes,omitempty"`
+	CPUPercent            float64       `json:"cpu_percent,omitempty"`
+	MemoryCurrentBytes    uint64        `json:"memory_current_bytes,omitempty"`
+	MemoryMaxBytes        uint64        `json:"memory_max_bytes,omitempty"`
+	ProcessRSSBytes       uint64        `json:"process_rss_bytes,omitempty"`
+	ReadBytes             uint64        `json:"read_bytes,omitempty"`
+	WriteBytes            uint64        `json:"write_bytes,omitempty"`
+	CgroupPath            string        `json:"cgroup_path,omitempty"`
+	CgroupAvailable       bool          `json:"cgroup_available"`
+	Disks                 []VirtualDisk `json:"disks,omitempty"`
+	NICs                  []VirtualNIC  `json:"nics,omitempty"`
+	PCIAddresses          []string      `json:"pci_addresses,omitempty"`
+	Running               bool          `json:"running"`
+	Source                string        `json:"source,omitempty"`
+}
+
+type VirtualDisk struct {
+	Target string `json:"target,omitempty"`
+	Source string `json:"source,omitempty"`
+	Bus    string `json:"bus,omitempty"`
+}
+
+type VirtualNIC struct {
+	Type             string  `json:"type,omitempty"`
+	Source           string  `json:"source,omitempty"`
+	Target           string  `json:"target,omitempty"`
+	MAC              string  `json:"mac,omitempty"`
+	HostNetwork      string  `json:"host_network,omitempty"`
+	RXBytesPerSecond float64 `json:"rx_bytes_per_second,omitempty"`
+	TXBytesPerSecond float64 `json:"tx_bytes_per_second,omitempty"`
 }
 
 type MemoryDevice struct {

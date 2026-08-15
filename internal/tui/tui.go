@@ -208,6 +208,12 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 			fmt.Fprintf(b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
 		}
 	}
+	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
+		b.WriteString("\nKVM/QEMU domains\n")
+		for _, vm := range snapshot.Virtualization.VirtualMachines {
+			fmt.Fprintf(b, "  %-20s run=%t vCPU %d CPU %5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB I/O %6.1f/%6.1f MiB\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024))
+		}
+	}
 	b.WriteString("\nMemory devices\n")
 	for _, memory := range snapshot.MemoryDevices {
 		fmt.Fprintf(b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)

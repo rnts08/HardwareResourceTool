@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.7.0 — 2026-08-15
+
+- Added per-domain QEMU CPU, process RSS, cgroup memory, and read/write I/O
+  accounting when the host exposes those read-only interfaces.
+- Parsed libvirt disk, NIC, and PCI host-device attachments.
+- Correlated VM bridge NICs with physical host NICs where bridge membership is
+  available.
+- Expanded text and TUI output to distinguish configured, current, and host
+  process resource values.
+
 ## 0.6.0 — 2026-08-15
 
 - Added read-only KVM/QEMU awareness from `/sys`, libvirt domain XML, and

@@ -105,6 +105,9 @@ func viewOverview(b *strings.Builder, snapshot model.Snapshot, history []model.S
 	fmt.Fprintf(b, "        used   %s\n", sparkline(memoryUsed, 0, 100))
 	fmt.Fprintf(b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
 	fmt.Fprintf(b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
+	if len(snapshot.System.Sysctls) > 0 {
+		fmt.Fprintf(b, "        sysctls %v\n", snapshot.System.Sysctls)
+	}
 }
 
 func viewStorage(b *strings.Builder, snapshot model.Snapshot) {

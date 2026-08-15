@@ -85,13 +85,14 @@ type NUMA struct {
 }
 
 type SystemSettings struct {
-	CPUGovernor  string `json:"cpu_governor,omitempty"`
-	THP          string `json:"transparent_hugepages,omitempty"`
-	Swappiness   int64  `json:"swappiness"`
-	OpenFiles    uint64 `json:"open_files_limit"`
-	MaxLocked    uint64 `json:"max_locked_memory_bytes"`
-	MaxProcesses uint64 `json:"max_processes_limit"`
-	MaxStack     uint64 `json:"max_stack_bytes"`
+	CPUGovernor  string            `json:"cpu_governor,omitempty"`
+	THP          string            `json:"transparent_hugepages,omitempty"`
+	Swappiness   int64             `json:"swappiness"`
+	OpenFiles    uint64            `json:"open_files_limit"`
+	MaxLocked    uint64            `json:"max_locked_memory_bytes"`
+	MaxProcesses uint64            `json:"max_processes_limit"`
+	MaxStack     uint64            `json:"max_stack_bytes"`
+	Sysctls      map[string]string `json:"sysctls,omitempty"`
 }
 
 type Finding struct {

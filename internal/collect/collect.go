@@ -297,6 +297,20 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 	if data, err := os.ReadFile(filepath.Join(c.sysRoot, "vm/swappiness")); err == nil {
 		s.System.Swappiness, _ = parseInt(string(data))
 	}
+	s.System.Sysctls = map[string]string{}
+	for name, path := range map[string]string{
+		"vm.overcommit_memory":      "vm/overcommit_memory",
+		"vm.dirty_ratio":            "vm/dirty_ratio",
+		"vm.dirty_background_ratio": "vm/dirty_background_ratio",
+		"kernel.nmi_watchdog":       "kernel/nmi_watchdog",
+	} {
+		if data, err := os.ReadFile(filepath.Join(c.procRoot, "sys", path)); err == nil {
+			s.System.Sysctls[name] = strings.TrimSpace(string(data))
+		}
+	}
+	if len(s.System.Sysctls) == 0 {
+		s.System.Sysctls = nil
+	}
 	governors := map[string]bool{}
 	for _, path := range glob(filepath.Join(c.sysRoot, "devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
 		if data, err := os.ReadFile(path); err == nil {

@@ -2,6 +2,7 @@ package analyze
 
 import (
 	"fmt"
+	"strconv"
 
 	"hardware-resources-tool/internal/model"
 )
@@ -34,6 +35,14 @@ func Findings(s model.Snapshot) []model.Finding {
 	}
 	if s.System.THP != "" && len(s.System.THP) > 0 && s.System.THP[0:1] != "[" {
 		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Transparent huge pages are not shown as active", Evidence: s.System.THP, Recommendation: "Review transparent huge page policy against the requirements of the virtualization platform."})
+	}
+	if s.System.Sysctls["vm.overcommit_memory"] == "2" {
+		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Strict memory overcommit policy is enabled", Evidence: "vm.overcommit_memory=2", Recommendation: "Confirm this policy matches the virtualization platform's memory reservation and guest allocation model."})
+	}
+	if value := s.System.Sysctls["vm.dirty_ratio"]; value != "" {
+		if ratio, err := strconv.ParseInt(value, 10, 64); err == nil && ratio > 20 {
+			findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "High dirty-page writeback threshold", Evidence: fmt.Sprintf("vm.dirty_ratio=%d", ratio), Recommendation: "Review dirty-page thresholds if latency-sensitive storage workloads experience bursty writeback."})
+		}
 	}
 	if len(s.Errors) > 0 {
 		findings = append(findings, model.Finding{Severity: "warning", Category: "collection", Title: "Some metrics were unavailable", Evidence: fmt.Sprintf("%d collector errors were reported", len(s.Errors)), Recommendation: "Review collector_errors in the JSON report before treating this assessment as complete."})

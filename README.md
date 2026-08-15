@@ -48,9 +48,9 @@ sudo ./scripts/live-collection-test.sh --duration 5s
 
 The current v1 focuses on core host bottlenecks. GPU, deep PCIe analysis, and automatic tuning are intentionally deferred.
 
-Release version: `0.2.0`. Release builds can override it with:
+Release version: `0.2.1`. Release builds can override it with:
 
 ```sh
-go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.2.0" -o hardware-resources ./cmd/hardware-resources
+go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.2.1" -o hardware-resources ./cmd/hardware-resources
 ```
  

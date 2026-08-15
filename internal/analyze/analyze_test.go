@@ -28,3 +28,10 @@ func TestFindingsReportCollectionErrors(t *testing.T) {
 		t.Fatalf("expected collection finding, got %#v", findings)
 	}
 }
+
+func TestFindingsDetectSysctlConfiguration(t *testing.T) {
+	findings := Findings(model.Snapshot{System: model.SystemSettings{Sysctls: map[string]string{"vm.overcommit_memory": "2", "vm.dirty_ratio": "25"}}})
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 sysctl findings, got %d", len(findings))
+	}
+}

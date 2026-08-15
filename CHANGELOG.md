@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 — 2026-08-15
+
+- Added selected VM and kernel sysctl values to JSON, text, and TUI reports.
+- Added advisory findings for strict memory overcommit and high dirty-page thresholds.
+- Added fixture coverage for sysctl collection.
+
 ## 0.2.0 — 2026-08-15
 
 This milestone completes the first usable live interface and expands Linux host

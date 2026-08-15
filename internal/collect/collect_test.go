@@ -83,6 +83,22 @@ func TestCollectFilesystemCapacity(t *testing.T) {
 	}
 }
 
+func TestCollectSystemReadsSelectedSysctls(t *testing.T) {
+	proc := t.TempDir()
+	sys := t.TempDir()
+	writeFixture(t, filepath.Join(proc, "sys/vm"), "overcommit_memory", "2\n")
+	writeFixture(t, filepath.Join(proc, "sys/vm"), "dirty_ratio", "25\n")
+	writeFixture(t, filepath.Join(proc, "sys/vm"), "dirty_background_ratio", "10\n")
+	writeFixture(t, filepath.Join(proc, "sys/kernel"), "nmi_watchdog", "1\n")
+	snapshot := model.Snapshot{}
+	if err := (&Collector{procRoot: proc, sysRoot: sys}).collectSystem(&snapshot, &rawCounters{}); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.System.Sysctls["vm.overcommit_memory"] != "2" || snapshot.System.Sysctls["vm.dirty_ratio"] != "25" {
+		t.Fatalf("unexpected sysctls: %#v", snapshot.System.Sysctls)
+	}
+}
+
 func writeFixture(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

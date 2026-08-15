@@ -70,3 +70,15 @@ func TestQEMUArgumentParsing(t *testing.T) {
 		t.Fatalf("memory = %d", got)
 	}
 }
+
+func TestVirtualizationParsers(t *testing.T) {
+	if got := parseNodeSet("0-2,4"); len(got) != 4 || got[2] != 2 || got[3] != 4 {
+		t.Fatalf("nodeset = %#v", got)
+	}
+	if got := parseQMPPath("unix:/run/libvirt/qemu/guest.monitor,server=on,wait=off"); got != "/run/libvirt/qemu/guest.monitor" {
+		t.Fatalf("QMP path = %q", got)
+	}
+	if got := parseProcessJiffies("123 (qemu name) S 1 2 3 4 5 6 7 8 9 10 11 12 13"); got != 23 {
+		t.Fatalf("process jiffies = %d", got)
+	}
+}

@@ -166,6 +166,7 @@ type VirtualMachine struct {
 	ConfiguredVCPUs       int64         `json:"configured_vcpus,omitempty"`
 	ConfiguredMemoryBytes uint64        `json:"configured_memory_bytes,omitempty"`
 	CPUPercent            float64       `json:"cpu_percent,omitempty"`
+	CgroupCPUPercent      float64       `json:"cgroup_cpu_percent,omitempty"`
 	MemoryCurrentBytes    uint64        `json:"memory_current_bytes,omitempty"`
 	MemoryMaxBytes        uint64        `json:"memory_max_bytes,omitempty"`
 	ProcessRSSBytes       uint64        `json:"process_rss_bytes,omitempty"`
@@ -173,6 +174,13 @@ type VirtualMachine struct {
 	WriteBytes            uint64        `json:"write_bytes,omitempty"`
 	CgroupPath            string        `json:"cgroup_path,omitempty"`
 	CgroupAvailable       bool          `json:"cgroup_available"`
+	Hugepages             bool          `json:"hugepages"`
+	HugepageBytes         uint64        `json:"hugepage_bytes,omitempty"`
+	NUMANodes             []int         `json:"numa_nodes,omitempty"`
+	BalloonEnabled        bool          `json:"balloon_enabled"`
+	BalloonActualBytes    uint64        `json:"balloon_actual_bytes,omitempty"`
+	BalloonTargetBytes    uint64        `json:"balloon_target_bytes,omitempty"`
+	QMPStatus             string        `json:"qmp_status,omitempty"`
 	Disks                 []VirtualDisk `json:"disks,omitempty"`
 	NICs                  []VirtualNIC  `json:"nics,omitempty"`
 	PCIAddresses          []string      `json:"pci_addresses,omitempty"`

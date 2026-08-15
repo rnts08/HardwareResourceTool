@@ -92,6 +92,14 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 		if s.Virtualization.MemoryOvercommitRatio > 1 {
 			findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "Configured guest memory exceeds host memory", Evidence: fmt.Sprintf("%.1f GiB allocated over %.1f GiB host memory (%.2fx)", float64(s.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), float64(s.Memory.TotalBytes)/(1024*1024*1024), s.Virtualization.MemoryOvercommitRatio), Recommendation: "Account for ballooning, paging, reservations, and host overhead before treating configured guest memory as physically available."})
 		}
+		for _, vm := range s.Virtualization.VirtualMachines {
+			if vm.CgroupAvailable && vm.MemoryMaxBytes > 0 && float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes) > 0.9 {
+				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "VM cgroup memory is near its limit", Evidence: fmt.Sprintf("%s uses %.1f%% of its cgroup memory limit", vm.Name, float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes)*100), Recommendation: "Review guest memory pressure, ballooning, host reclaim, and the domain memory limit before adding workload or increasing overcommit."})
+			}
+			if vm.QMPStatus == "paused" {
+				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "QEMU domain is paused", Evidence: vm.Name + " reports paused through read-only QMP status", Recommendation: "Inspect the domain and host logs to determine whether the pause is intentional or caused by an I/O, memory, or device condition."})
+			}
+		}
 	}
 	if s.System.THP != "" && len(s.System.THP) > 0 && s.System.THP[0:1] != "[" {
 		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Transparent huge pages are not shown as active", Evidence: s.System.THP, Recommendation: "Review transparent huge page policy against the requirements of the virtualization platform."})

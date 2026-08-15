@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 — 2026-08-15
+
+- Added cgroup v2 CPU usage and memory-pressure accounting per QEMU domain.
+- Added libvirt hugepage and NUMA nodeset metadata.
+- Added bounded read-only QMP queries for domain status and balloon state when
+  a QMP Unix socket is exposed through the QEMU command line.
+- Added findings for cgroup memory pressure and paused QEMU domains.
+
 ## 0.7.0 — 2026-08-15
 
 - Added per-domain QEMU CPU, process RSS, cgroup memory, and read/write I/O

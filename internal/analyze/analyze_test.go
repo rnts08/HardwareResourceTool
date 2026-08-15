@@ -47,3 +47,10 @@ func TestPCIeFindings(t *testing.T) {
 		t.Fatalf("unexpected PCIe findings: %#v", findings)
 	}
 }
+
+func TestVirtualizationUsageFindings(t *testing.T) {
+	findings := Findings(model.Snapshot{Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{{Name: "guest-a", CgroupAvailable: true, MemoryCurrentBytes: 950, MemoryMaxBytes: 1000, QMPStatus: "paused"}}}})
+	if len(findings) != 2 || findings[0].Category != "virtualization" || findings[1].Title != "QEMU domain is paused" {
+		t.Fatalf("unexpected virtualization findings: %#v", findings)
+	}
+}

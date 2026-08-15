@@ -211,7 +211,7 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
 		b.WriteString("\nKVM/QEMU domains\n")
 		for _, vm := range snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(b, "  %-20s run=%t vCPU %d CPU %5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB I/O %6.1f/%6.1f MiB\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024))
+			fmt.Fprintf(b, "  %-20s run=%t vCPU %d CPU %5.1f%%/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB I/O %6.1f/%6.1f MiB balloon %6.1f/%6.1f GiB\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024), float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonTargetBytes)/(1024*1024*1024))
 		}
 	}
 	b.WriteString("\nMemory devices\n")

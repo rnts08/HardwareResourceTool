@@ -12,10 +12,23 @@ import (
 )
 
 type libvirtDomainXML struct {
-	Name    string           `xml:"name"`
-	Memory  memoryXML        `xml:"memory"`
-	VCPU    string           `xml:"vcpu"`
-	Devices domainDevicesXML `xml:"devices"`
+	Name          string           `xml:"name"`
+	Memory        memoryXML        `xml:"memory"`
+	VCPU          string           `xml:"vcpu"`
+	Devices       domainDevicesXML `xml:"devices"`
+	MemoryBacking struct {
+		Hugepages *struct {
+			Page struct {
+				Size uint64 `xml:"size,attr"`
+				Unit string `xml:"unit,attr"`
+			} `xml:"page"`
+		} `xml:"hugepages"`
+	} `xml:"memoryBacking"`
+	NUMATune struct {
+		Memory struct {
+			Nodeset string `xml:"nodeset,attr"`
+		} `xml:"memory"`
+	} `xml:"numatune"`
 }
 
 type memoryXML struct {
@@ -24,22 +37,25 @@ type memoryXML struct {
 }
 
 type qemuProcess struct {
-	Name       string
-	PID        int
-	VCPU       int64
-	Memory     uint64
-	RSS        uint64
-	CPUJiffies uint64
-	ReadBytes  uint64
-	WriteBytes uint64
+	Name          string
+	PID           int
+	VCPU          int64
+	Memory        uint64
+	RSS           uint64
+	CPUJiffies    uint64
+	ReadBytes     uint64
+	WriteBytes    uint64
+	QMPPath       string
+	CgroupCPUUsec uint64
 }
 
-type virtualProcessCounter struct{ cpuJiffies, readBytes, writeBytes uint64 }
+type virtualProcessCounter struct{ cpuJiffies, readBytes, writeBytes, cgroupCPUUsec uint64 }
 
 type domainDevicesXML struct {
-	Disks    []domainDiskXML    `xml:"disk"`
-	NICs     []domainNICXML     `xml:"interface"`
-	Hostdevs []domainHostdevXML `xml:"hostdev"`
+	Disks       []domainDiskXML    `xml:"disk"`
+	NICs        []domainNICXML     `xml:"interface"`
+	Hostdevs    []domainHostdevXML `xml:"hostdev"`
+	Memballoons []struct{}         `xml:"memballoon"`
 }
 
 type domainDiskXML struct {
@@ -103,6 +119,12 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 		}
 		vcpus, _ := strconv.ParseInt(strings.TrimSpace(domain.VCPU), 10, 64)
 		vm := model.VirtualMachine{Name: domain.Name, ConfiguredVCPUs: vcpus, ConfiguredMemoryBytes: memoryBytes(domain.Memory), Source: "libvirt", Disks: []model.VirtualDisk{}, NICs: []model.VirtualNIC{}, PCIAddresses: []string{}}
+		if domain.MemoryBacking.Hugepages != nil {
+			vm.Hugepages = true
+			page := domain.MemoryBacking.Hugepages.Page
+			vm.HugepageBytes = memoryBytes(memoryXML{Unit: page.Unit, Value: page.Size})
+		}
+		vm.NUMANodes = parseNodeSet(domain.NUMATune.Memory.Nodeset)
 		for _, disk := range domain.Devices.Disks {
 			if disk.Device == "cdrom" || disk.Device == "floppy" {
 				continue
@@ -129,6 +151,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 				vm.PCIAddresses = append(vm.PCIAddresses, fmt.Sprintf("%s:%s:%s.%s", strings.TrimPrefix(address.Domain, "0x"), strings.TrimPrefix(address.Bus, "0x"), strings.TrimPrefix(address.Slot, "0x"), strings.TrimPrefix(address.Function, "0x")))
 			}
 		}
+		vm.BalloonEnabled = len(domain.Devices.Memballoons) > 0
 		virt.VirtualMachines = append(virt.VirtualMachines, vm)
 	}
 	if len(virt.VirtualMachines) > 0 {
@@ -153,13 +176,16 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 				virt.VirtualMachines[i].ReadBytes = process.ReadBytes
 				virt.VirtualMachines[i].WriteBytes = process.WriteBytes
 				virt.VirtualMachines[i].MemoryCurrentBytes, virt.VirtualMachines[i].MemoryMaxBytes, virt.VirtualMachines[i].CgroupPath, virt.VirtualMachines[i].CgroupAvailable = readQEMUCgroup(c.procRoot, c.sysRoot, process.PID)
+				applyQMP(&virt.VirtualMachines[i], process.QMPPath)
 				matched = true
 				break
 			}
 		}
 		if !matched {
 			current, maximum, cgroupPath, cgroupAvailable := readQEMUCgroup(c.procRoot, c.sysRoot, process.PID)
-			virt.VirtualMachines = append(virt.VirtualMachines, model.VirtualMachine{Name: process.Name, PID: process.PID, ConfiguredVCPUs: process.VCPU, ConfiguredMemoryBytes: process.Memory, ProcessRSSBytes: process.RSS, CPUPercent: processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs), ReadBytes: process.ReadBytes, WriteBytes: process.WriteBytes, Running: true, Source: "qemu-process", MemoryCurrentBytes: current, MemoryMaxBytes: maximum, CgroupPath: cgroupPath, CgroupAvailable: cgroupAvailable})
+			vm := model.VirtualMachine{Name: process.Name, PID: process.PID, ConfiguredVCPUs: process.VCPU, ConfiguredMemoryBytes: process.Memory, ProcessRSSBytes: process.RSS, CPUPercent: processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs), ReadBytes: process.ReadBytes, WriteBytes: process.WriteBytes, Running: true, Source: "qemu-process", MemoryCurrentBytes: current, MemoryMaxBytes: maximum, CgroupPath: cgroupPath, CgroupAvailable: cgroupAvailable}
+			applyQMP(&vm, process.QMPPath)
+			virt.VirtualMachines = append(virt.VirtualMachines, vm)
 		}
 	}
 	for i := range virt.VirtualMachines {
@@ -168,6 +194,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 			current, maximum, cgroupPath, available := readQEMUCgroup(c.procRoot, c.sysRoot, vm.PID)
 			vm.MemoryCurrentBytes, vm.MemoryMaxBytes, vm.CgroupPath, vm.CgroupAvailable = current, maximum, cgroupPath, available
 			if available {
+				vm.CgroupCPUPercent = cgroupCPUPercent(vm.PID, readQEMUCGCPU(c.sysRoot, cgroupPath), raw, seconds)
 				if readBytes, writeBytes := readQEMUCGIO(c.sysRoot, cgroupPath); readBytes > 0 || writeBytes > 0 {
 					vm.ReadBytes, vm.WriteBytes = readBytes, writeBytes
 				}
@@ -194,6 +221,15 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 	}
 	s.Virtualization = virt
 	return nil
+}
+
+func applyQMP(vm *model.VirtualMachine, path string) {
+	status, actual, target, ok := queryQMP(path)
+	if !ok {
+		return
+	}
+	vm.QMPStatus, vm.BalloonActualBytes, vm.BalloonTargetBytes = status, actual, target
+	vm.BalloonEnabled = true
 }
 
 func memoryBytes(memory memoryXML) uint64 {
@@ -235,7 +271,7 @@ func discoverQEMUProcesses(procRoot string) ([]qemuProcess, error) {
 		if len(fields) == 0 || !isQEMUExecutable(fields[0]) {
 			continue
 		}
-		process := qemuProcess{PID: pid, Name: strings.Split(qemuArgument(fields, "-name"), ",")[0], VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields)}
+		process := qemuProcess{PID: pid, Name: strings.Split(qemuArgument(fields, "-name"), ",")[0], VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields), QMPPath: parseQMPPath(qemuArgument(fields, "-qmp"))}
 		if process.Name == "" {
 			process.Name = fmt.Sprintf("qemu-%d", pid)
 		}
@@ -294,11 +330,11 @@ func processCPUPercent(process qemuProcess, raw *rawCounters, seconds float64, l
 		raw.virtualProcesses = map[int]virtualProcessCounter{}
 	}
 	if seconds <= 0 || logicalCPUs <= 0 {
-		raw.virtualProcesses[process.PID] = virtualProcessCounter{process.CPUJiffies, process.ReadBytes, process.WriteBytes}
+		raw.virtualProcesses[process.PID] = virtualProcessCounter{cpuJiffies: process.CPUJiffies, readBytes: process.ReadBytes, writeBytes: process.WriteBytes}
 		return 0
 	}
 	previous, ok := raw.virtualProcesses[process.PID]
-	raw.virtualProcesses[process.PID] = virtualProcessCounter{process.CPUJiffies, process.ReadBytes, process.WriteBytes}
+	raw.virtualProcesses[process.PID] = virtualProcessCounter{cpuJiffies: process.CPUJiffies, readBytes: process.ReadBytes, writeBytes: process.WriteBytes}
 	if !ok || process.CPUJiffies < previous.cpuJiffies {
 		return 0
 	}
@@ -352,6 +388,67 @@ func readQEMUCGIO(sysRoot, cgroupPath string) (uint64, uint64) {
 		}
 	}
 	return readBytes, writeBytes
+}
+
+func readQEMUCGCPU(sysRoot, cgroupPath string) uint64 {
+	data, err := os.ReadFile(filepath.Join(sysRoot, "fs/cgroup", cgroupPath, "cpu.stat"))
+	if err != nil {
+		return 0
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && fields[0] == "usage_usec" {
+			value, _ := strconv.ParseUint(fields[1], 10, 64)
+			return value
+		}
+	}
+	return 0
+}
+
+func cgroupCPUPercent(pid int, usage uint64, raw *rawCounters, seconds float64) float64 {
+	if raw.virtualProcesses == nil {
+		raw.virtualProcesses = map[int]virtualProcessCounter{}
+	}
+	previous := raw.virtualProcesses[pid]
+	raw.virtualProcesses[pid] = virtualProcessCounter{cpuJiffies: previous.cpuJiffies, readBytes: previous.readBytes, writeBytes: previous.writeBytes, cgroupCPUUsec: usage}
+	if usage == 0 || previous.cgroupCPUUsec == 0 || usage < previous.cgroupCPUUsec || seconds <= 0 {
+		return 0
+	}
+	return float64(usage-previous.cgroupCPUUsec) / (seconds * 10000)
+}
+
+func parseNodeSet(value string) []int {
+	result := []int{}
+	for _, item := range strings.Split(strings.TrimSpace(value), ",") {
+		if item == "" {
+			continue
+		}
+		if strings.Contains(item, "-") {
+			parts := strings.SplitN(item, "-", 2)
+			start, _ := strconv.Atoi(parts[0])
+			end, _ := strconv.Atoi(parts[1])
+			for node := start; node <= end; node++ {
+				result = append(result, node)
+			}
+			continue
+		}
+		node, err := strconv.Atoi(item)
+		if err == nil {
+			result = append(result, node)
+		}
+	}
+	return result
+}
+
+func parseQMPPath(value string) string {
+	if !strings.HasPrefix(value, "unix:") {
+		return ""
+	}
+	value = strings.TrimPrefix(value, "unix:")
+	if comma := strings.IndexByte(value, ','); comma >= 0 {
+		value = value[:comma]
+	}
+	return value
 }
 
 func resolveVirtualNICHost(sysRoot string, nic model.VirtualNIC, networks []model.Network) string {

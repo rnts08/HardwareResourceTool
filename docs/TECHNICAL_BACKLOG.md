@@ -84,9 +84,10 @@ attachment accounting implemented in `0.7.0`.
 - Add conservative CPU/memory overcommit findings; do not represent guest
   configured memory as actual resident guest memory.
 
-Remaining: cgroup CPU aggregation, balloon state, hugepage backing, NUMA
-placement, and QMP metrics. QMP remains optional because the collector must
-not send mutating commands or assume socket access.
+Remaining: balloon target accuracy on QMP implementations that do not expose
+it, hugepage runtime consumption, NUMA runtime placement, and richer QMP
+metrics. QMP remains optional because the collector must not send mutating
+commands or assume socket access.
 
 ## Cross-cutting completion work
 

@@ -83,8 +83,10 @@ available, current/max memory and aggregate read/write I/O are added; QEMU
 process CPU and `/proc/<pid>/io` are used as fallbacks. Disk, NIC, and PCI
 host-device attachments are retained, and bridge members are mapped back to
 physical NICs where possible. These values are not treated as guest actual
-usage: balloon state, NUMA pinning, and QMP metrics remain future work. No
-libvirt command, QMP command, or mutation is performed.
+usage: runtime balloon target accuracy, NUMA pinning validation, and richer QMP
+metrics remain future work. QMP access is bounded and uses only protocol
+negotiation plus `query-status`/`query-balloon`; no guest or host mutation is
+performed.
 
 ## Server vendors
 

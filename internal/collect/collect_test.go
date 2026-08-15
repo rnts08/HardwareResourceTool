@@ -139,6 +139,8 @@ func TestCollectPCIAndNVIDIAIdentity(t *testing.T) {
 	config[0x41] = 0x00
 	config[0x44] = 0x02                                            // max payload: 512 bytes
 	config[0x45] = 0x20                                            // max read request: 512 bytes
+	binary.LittleEndian.PutUint32(config[0x4c:0x50], 0x00000104)   // Gen4 x16 capability
+	binary.LittleEndian.PutUint16(config[0x52:0x54], 0x00000083)   // Gen3 x8 status
 	binary.LittleEndian.PutUint32(config[0x100:0x104], 0x00000001) // AER
 	binary.LittleEndian.PutUint32(config[0x104:0x108], 0x00000004)
 	binary.LittleEndian.PutUint32(config[0x110:0x114], 0x00000008)
@@ -151,7 +153,7 @@ func TestCollectPCIAndNVIDIAIdentity(t *testing.T) {
 		t.Fatalf("unexpected PCI/GPU inventory: %#v %#v", snapshot.PCI, snapshot.GPUs)
 	}
 	deviceInfo := snapshot.PCI[0]
-	if !reflect.DeepEqual(deviceInfo.Capabilities, []string{"pcie", "aer"}) || deviceInfo.PCIeMaxPayloadBytes != 512 || deviceInfo.PCIeMaxReadRequestBytes != 512 || deviceInfo.AERUncorrectableStatus != 4 || deviceInfo.AERCorrectableStatus != 8 {
+	if !reflect.DeepEqual(deviceInfo.Capabilities, []string{"pcie", "aer"}) || deviceInfo.PCIeMaxPayloadBytes != 512 || deviceInfo.PCIeMaxReadRequestBytes != 512 || deviceInfo.PCIeCapabilityMaxSpeed != "16.0 GT/s PCIe" || deviceInfo.PCIeCapabilityMaxWidth != 16 || deviceInfo.PCIeNegotiatedSpeed != "8.0 GT/s PCIe" || deviceInfo.PCIeNegotiatedWidth != 8 || deviceInfo.AERUncorrectableStatus != 4 || deviceInfo.AERCorrectableStatus != 8 {
 		t.Fatalf("unexpected PCI capabilities: %#v", deviceInfo)
 	}
 }

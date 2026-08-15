@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-08-15
+
+- Added PCIe capability maximum and negotiated link speed/width decoding.
+- Exposed link capability/status details in text and TUI hardware views.
+
 ## 0.3.0 — 2026-08-15
 
 - Added bounded PCI standard and extended capability parsing from read-only

@@ -2,6 +2,7 @@ package collect
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 
 	"hardware-resources-tool/internal/model"
@@ -108,12 +109,39 @@ func walkPCICapabilities(data []byte) []pciCapability {
 }
 
 func parsePCIeCapability(data []byte, offset int, device *model.PCIDevice) {
-	if offset < 0 || offset+0x0e > len(data) {
+	if offset < 0 || offset+0x14 > len(data) {
 		return
 	}
 	deviceCap := binary.LittleEndian.Uint32(data[offset+4 : offset+8])
 	device.PCIeMaxPayloadBytes = int64(128 << ((deviceCap >> 0) & 0x7))
 	device.PCIeMaxReadRequestBytes = int64(128 << ((deviceCap >> 12) & 0x7))
+	linkCapability := binary.LittleEndian.Uint32(data[offset+0x0c : offset+0x10])
+	device.PCIeCapabilityMaxSpeed = pcieSpeedName(uint8(linkCapability & 0xf))
+	device.PCIeCapabilityMaxWidth = int64((linkCapability >> 4) & 0x3f)
+	linkStatus := binary.LittleEndian.Uint16(data[offset+0x12 : offset+0x14])
+	device.PCIeNegotiatedSpeed = pcieSpeedName(uint8(linkStatus & 0xf))
+	device.PCIeNegotiatedWidth = int64((linkStatus >> 4) & 0x3f)
+}
+
+func pcieSpeedName(code uint8) string {
+	switch code {
+	case 1:
+		return "2.5 GT/s PCIe"
+	case 2:
+		return "5.0 GT/s PCIe"
+	case 3:
+		return "8.0 GT/s PCIe"
+	case 4:
+		return "16.0 GT/s PCIe"
+	case 5:
+		return "32.0 GT/s PCIe"
+	case 6:
+		return "64.0 GT/s PCIe"
+	case 0:
+		return ""
+	default:
+		return fmt.Sprintf("PCIe speed code %d", code)
+	}
 }
 
 func parseAERCapability(data []byte, offset int, device *model.PCIDevice) {

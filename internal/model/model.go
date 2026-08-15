@@ -109,6 +109,10 @@ type PCIDevice struct {
 	Capabilities            []string `json:"capabilities,omitempty"`
 	PCIeMaxPayloadBytes     int64    `json:"pcie_max_payload_bytes,omitempty"`
 	PCIeMaxReadRequestBytes int64    `json:"pcie_max_read_request_bytes,omitempty"`
+	PCIeCapabilityMaxSpeed  string   `json:"pcie_capability_max_speed,omitempty"`
+	PCIeCapabilityMaxWidth  int64    `json:"pcie_capability_max_width,omitempty"`
+	PCIeNegotiatedSpeed     string   `json:"pcie_negotiated_speed,omitempty"`
+	PCIeNegotiatedWidth     int64    `json:"pcie_negotiated_width,omitempty"`
 	AERUncorrectableStatus  uint32   `json:"aer_uncorrectable_status,omitempty"`
 	AERCorrectableStatus    uint32   `json:"aer_correctable_status,omitempty"`
 	SRIOVTotalVFs           int64    `json:"sriov_total_vfs,omitempty"`

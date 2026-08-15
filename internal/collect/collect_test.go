@@ -57,6 +57,15 @@ func TestCollectNetworkMetadata(t *testing.T) {
 	writeFixture(t, base, "operstate", "up\n")
 	writeFixture(t, base, "speed", "1000\n")
 	writeFixture(t, base, "mtu", "1500\n")
+	if err := os.MkdirAll(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), filepath.Join(base, "device")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(sys, "class/net/veth0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(base, "queues/rx-0"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +76,7 @@ func TestCollectNetworkMetadata(t *testing.T) {
 	if err := (&Collector{sysRoot: sys}).collectNetworks(&snapshot, &rawCounters{networks: map[string]networkCounter{}}); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Networks) != 1 || snapshot.Networks[0].LinkSpeedMbps != 1000 || snapshot.Networks[0].RXQueues != 1 {
+	if len(snapshot.Networks) != 1 || snapshot.Networks[0].LinkSpeedMbps != 1000 || snapshot.Networks[0].RXQueues != 1 || !snapshot.Networks[0].Physical || snapshot.VirtualNetworkCount != 1 {
 		t.Fatalf("unexpected network metadata: %#v", snapshot.Networks)
 	}
 }
@@ -82,6 +91,19 @@ func TestCollectFilesystemCapacity(t *testing.T) {
 	}
 	if len(snapshot.Filesystems) != 1 || snapshot.Filesystems[0].MountPoint != mountPoint || snapshot.Filesystems[0].ReadOnly {
 		t.Fatalf("unexpected filesystems: %#v", snapshot.Filesystems)
+	}
+}
+
+func TestCollectFilesystemFiltersPseudoFilesystems(t *testing.T) {
+	proc := t.TempDir()
+	mountPoint := t.TempDir()
+	writeFixture(t, proc, "mounts", "proc /proc proc rw,nosuid 0 0\nfixture "+mountPoint+" tmpfs rw,nosuid 0 0\n")
+	snapshot := model.Snapshot{Filesystems: []model.Filesystem{}}
+	if err := (&Collector{procRoot: proc}).collectFilesystems(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Filesystems) != 1 || snapshot.Filesystems[0].MountPoint != mountPoint {
+		t.Fatalf("pseudo filesystem was not filtered: %#v", snapshot.Filesystems)
 	}
 }
 

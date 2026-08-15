@@ -51,7 +51,10 @@ func WriteText(w io.Writer, result model.Report) error {
 		fmt.Fprintf(w, "Filesystem: %s %s %.1f%% used, %.1f GiB available\n", filesystem.MountPoint, mode, filesystem.UsedPercent, float64(filesystem.AvailableBytes)/(1024*1024*1024))
 	}
 	for _, network := range result.Snapshot.Networks {
-		fmt.Fprintf(w, "Network: %s %s %.1f/%.1f KiB/s, speed %d Mb/s, driver %s, duplex %s, FEC %s, rings %d/%d\n", network.Name, network.State, network.RXBytesPerSec/1024, network.TXBytesPerSec/1024, network.LinkSpeedMbps, network.Driver, network.LinkDuplex, network.FECActive, network.RXRingSize, network.TXRingSize)
+		fmt.Fprintf(w, "Network: %s %s PCI %s %.1f/%.1f KiB/s, speed %d Mb/s, driver %s, duplex %s, FEC %s, rings %d/%d\n", network.Name, network.State, network.PCIAddress, network.RXBytesPerSec/1024, network.TXBytesPerSec/1024, network.LinkSpeedMbps, network.Driver, network.LinkDuplex, network.FECActive, network.RXRingSize, network.TXRingSize)
+	}
+	if result.Snapshot.VirtualNetworkCount > 0 {
+		fmt.Fprintf(w, "Virtual/device-less network interfaces filtered: %d\n", result.Snapshot.VirtualNetworkCount)
 	}
 	for _, device := range result.Snapshot.PCI {
 		if len(device.Capabilities) > 0 || device.AERUncorrectableStatus != 0 || device.AERCorrectableStatus != 0 || device.PCIePathBottleneck != "" {
@@ -59,7 +62,11 @@ func WriteText(w io.Writer, result model.Report) error {
 		}
 	}
 	for _, gpu := range result.Snapshot.GPUs {
-		fmt.Fprintf(w, "GPU: %s %s NVML %t status %s memory %.1f/%.1f GiB util %.1f%% temp %.1fC power %.1fW\n", gpu.Address, gpu.Name, gpu.NVML, gpu.NVMLStatus, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+		if gpu.NVML {
+			fmt.Fprintf(w, "GPU: %s %s NVML available memory %.1f/%.1f GiB util %.1f%% temp %.1fC power %.1fW\n", gpu.Address, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+		} else {
+			fmt.Fprintf(w, "GPU: %s NVML unavailable (%s)\n", gpu.Address, gpu.NVMLStatus)
+		}
 	}
 	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
 	fmt.Fprintf(w, "Findings: %d\n", len(result.Findings))

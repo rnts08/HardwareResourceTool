@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.2 — 2026-08-15
+
+- Filtered pseudo-filesystems such as `/proc`, `/sys`, cgroups, debugfs, and
+  other non-capacity mounts from filesystem capacity output.
+- Restricted the primary NIC report to sysfs device-backed hardware interfaces,
+  exposed their PCI addresses, and reported the count of filtered virtual
+  interfaces separately.
+- Rendered unavailable NVML telemetry as explicit status instead of zero-valued
+  measurements.
+
 ## 0.5.1 — 2026-08-15
 
 - Added a Makefile for stripped Linux builds, testing, vetting, formatting,

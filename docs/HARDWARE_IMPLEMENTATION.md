@@ -59,8 +59,11 @@ Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 
 ## NICs
 
-The base collector uses `/sys/class/net`, read-only ethtool ioctl data for ring
-sizes, and the Linux ethtool generic-netlink `*_GET` operations for link state,
+The base collector uses `/sys/class/net`, but the primary NIC list is limited
+to interfaces with a sysfs `device` backing path; bridges, veth, tap, loopback,
+and other device-less virtual interfaces are counted separately rather than
+reported as physical hardware. Read-only ethtool ioctl data supplies ring
+sizes, and the Linux ethtool generic-netlink `*_GET` operations supply link state,
 duplex/autonegotiation, interface/peer link modes, and FEC. Driver identity is
 read from the PCI sysfs driver link. Unsupported virtual devices retain an
 error string instead of failing the snapshot. Feature bitsets, channels,

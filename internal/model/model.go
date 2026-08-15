@@ -5,18 +5,19 @@ import "time"
 const SchemaVersion = "1"
 
 type Snapshot struct {
-	CollectedAt   time.Time      `json:"collected_at"`
-	CPU           CPU            `json:"cpu"`
-	Memory        Memory         `json:"memory"`
-	Disks         []Disk         `json:"disks"`
-	Filesystems   []Filesystem   `json:"filesystems"`
-	Networks      []Network      `json:"networks"`
-	PCI           []PCIDevice    `json:"pci_devices"`
-	MemoryDevices []MemoryDevice `json:"memory_devices"`
-	GPUs          []GPU          `json:"gpus"`
-	NUMA          NUMA           `json:"numa"`
-	System        SystemSettings `json:"system"`
-	Errors        []string       `json:"collector_errors"`
+	CollectedAt         time.Time      `json:"collected_at"`
+	CPU                 CPU            `json:"cpu"`
+	Memory              Memory         `json:"memory"`
+	Disks               []Disk         `json:"disks"`
+	Filesystems         []Filesystem   `json:"filesystems"`
+	Networks            []Network      `json:"networks"`
+	VirtualNetworkCount int            `json:"virtual_network_count,omitempty"`
+	PCI                 []PCIDevice    `json:"pci_devices"`
+	MemoryDevices       []MemoryDevice `json:"memory_devices"`
+	GPUs                []GPU          `json:"gpus"`
+	NUMA                NUMA           `json:"numa"`
+	System              SystemSettings `json:"system"`
+	Errors              []string       `json:"collector_errors"`
 }
 
 type CPU struct {
@@ -82,6 +83,8 @@ type Network struct {
 	FECActive           string   `json:"fec_active,omitempty"`
 	FECSupported        string   `json:"fec_supported,omitempty"`
 	EthtoolError        string   `json:"ethtool_error,omitempty"`
+	Physical            bool     `json:"physical"`
+	PCIAddress          string   `json:"pci_address,omitempty"`
 }
 
 type Filesystem struct {

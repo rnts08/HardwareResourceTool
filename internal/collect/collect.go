@@ -237,14 +237,24 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 	}
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if entry.Name() != "lo" {
-			names = append(names, entry.Name())
+		name := entry.Name()
+		if name == "lo" {
+			continue
 		}
+		physical, _ := networkDeviceInfo(c.sysRoot, name)
+		if !physical {
+			s.VirtualNetworkCount++
+			continue
+		}
+		names = append(names, name)
 	}
 	ethtoolDataByName := enrichNetworks(names)
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "lo" {
+			continue
+		}
+		if _, ok := ethtoolDataByName[name]; !ok {
 			continue
 		}
 		base := filepath.Join(c.sysRoot, "class/net", name, "statistics")
@@ -267,8 +277,9 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 		rxRing, txRing := networkRingSizes(name)
 		driver := symlinkBase(filepath.Join(c.sysRoot, "class/net", name, "device/driver"))
 		ethtoolData := ethtoolDataByName[name]
+		_, pciAddress := networkDeviceInfo(c.sysRoot, name)
 		raw.networks[name] = networkCounter{rxBytes: values["rx_bytes"], txBytes: values["tx_bytes"], rxPackets: values["rx_packets"], txPackets: values["tx_packets"], rxErrors: values["rx_errors"], txErrors: values["tx_errors"], rxDrops: values["rx_dropped"], txDrops: values["tx_dropped"]}
-		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues, RXRingSize: rxRing, TXRingSize: txRing, Driver: driver, LinkDuplex: ethtoolData.Duplex, AutoNegotiation: ethtoolData.Autoneg, LinkUp: ethtoolData.LinkUp, SupportedLinkModes: ethtoolData.Supported, AdvertisedLinkModes: ethtoolData.Advertised, PeerLinkModes: ethtoolData.Peer, FECActive: ethtoolData.FECActive, FECSupported: ethtoolData.FECSupported, EthtoolError: ethtoolData.Error})
+		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues, RXRingSize: rxRing, TXRingSize: txRing, Driver: driver, LinkDuplex: ethtoolData.Duplex, AutoNegotiation: ethtoolData.Autoneg, LinkUp: ethtoolData.LinkUp, SupportedLinkModes: ethtoolData.Supported, AdvertisedLinkModes: ethtoolData.Advertised, PeerLinkModes: ethtoolData.Peer, FECActive: ethtoolData.FECActive, FECSupported: ethtoolData.FECSupported, EthtoolError: ethtoolData.Error, Physical: true, PCIAddress: pciAddress})
 	}
 	return nil
 }
@@ -285,6 +296,9 @@ func (c *Collector) collectFilesystems(s *model.Snapshot) error {
 			continue
 		}
 		mountPoint := decodeMountField(fields[1])
+		if isPseudoFilesystem(fields[2]) {
+			continue
+		}
 		if seen[mountPoint] {
 			continue
 		}
@@ -296,7 +310,7 @@ func (c *Collector) collectFilesystems(s *model.Snapshot) error {
 		total := uint64(stat.Blocks) * uint64(stat.Bsize)
 		available := uint64(stat.Bavail) * uint64(stat.Bsize)
 		used := float64(0)
-		if total > 0 {
+		if total > 0 && available <= total {
 			used = float64(total-available) / float64(total) * 100
 		}
 		readOnly := false

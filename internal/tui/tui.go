@@ -163,6 +163,9 @@ func viewStorage(b *strings.Builder, snapshot model.Snapshot) {
 		}
 		fmt.Fprintf(b, "  %-24s %-3s %5.1f%% used  available %10s  %s\n", filesystem.MountPoint, mode, filesystem.UsedPercent, formatBytes(filesystem.AvailableBytes), filesystem.Type)
 	}
+	if snapshot.VirtualNetworkCount > 0 {
+		fmt.Fprintf(b, "\n  Virtual/device-less interfaces filtered: %d\n", snapshot.VirtualNetworkCount)
+	}
 }
 
 func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
@@ -171,7 +174,7 @@ func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
 		b.WriteString("  No network interfaces reported.\n")
 	}
 	for _, network := range snapshot.Networks {
-		fmt.Fprintf(b, "  %-16s %-8s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		fmt.Fprintf(b, "  %-16s %-8s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
 		if network.Driver != "" || network.LinkDuplex != "" || network.FECActive != "" {
 			fmt.Fprintf(b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes))
 		}
@@ -196,7 +199,11 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
-		fmt.Fprintf(b, "  %-16s %s:%s NVML %t  %s  memory %.1f/%.1f GiB  util %.1f%%  temp %.1fC  power %.1fW\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVML, gpu.NVMLStatus, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+		if gpu.NVML {
+			fmt.Fprintf(b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB  util %.1f%%  temp %.1fC  power %.1fW\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+		} else {
+			fmt.Fprintf(b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
+		}
 	}
 	b.WriteString("\nMemory devices\n")
 	for _, memory := range snapshot.MemoryDevices {

@@ -54,9 +54,9 @@ Static PCIe, SMBIOS, EDAC, and GPU identity inventory is collected once per
 collector lifetime. Dynamic counters continue to refresh at the selected
 interval, keeping the monitor overhead low enough for one-second sampling.
 
-Release version: `0.3.1`. Release builds can override it with:
+Release version: `0.4.0`. Release builds can override it with:
 
 ```sh
-go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.3.1 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
+go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.4.0 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
 ```
  

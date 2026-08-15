@@ -48,6 +48,7 @@ func (c *Collector) collectPCI(s *model.Snapshot) error {
 			s.GPUs = append(s.GPUs, model.GPU{Address: address, VendorID: vendor, DeviceID: device})
 		}
 	}
+	enrichPCITopology(paths, s.PCI)
 	return nil
 }
 

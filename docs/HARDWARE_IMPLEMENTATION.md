@@ -15,6 +15,13 @@ or AMD EPYC product documentation are reference capabilities only; actual
 platform wiring, bifurcation, socket count, and CXL usage determine the
 observed link topology.
 
+Resolved PCI device symlinks are used to build endpoint-to-bridge paths. For
+each path the collector estimates aggregate bandwidth from negotiated GT/s and
+lane width, retains the minimum link and exact bottleneck address, and leaves
+the result unknown when a virtual or incomplete topology cannot be resolved.
+Analysis reports downgraded endpoint links, upstream path bottlenecks, and
+non-zero AER status conservatively.
+
 References:
 
 - Linux PCI sysfs: <https://docs.kernel.org/7.1/PCI/sysfs-pci.html>

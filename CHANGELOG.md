@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 — 2026-08-15
+
+- Added PCIe endpoint-to-bridge path discovery from resolved sysfs links.
+- Added negotiated-link bandwidth normalization and minimum-path bottleneck
+  reporting.
+- Added findings for downgraded links, upstream bottlenecks, and AER status.
+- Exposed PCIe path data in JSON, text reports, and the TUI.
+
 ## 0.3.1 — 2026-08-15
 
 - Added PCIe capability maximum and negotiated link speed/width decoding.

@@ -53,6 +53,17 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "network", Title: "Network errors or drops detected", Evidence: fmt.Sprintf("%s errors rx=%d tx=%d, drops rx=%d tx=%d", network.Name, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops), Recommendation: "Inspect NIC health, link negotiation, driver counters, queue sizing, and host network contention."})
 		}
 	}
+	for _, device := range s.PCI {
+		if device.PCIeCapabilityMaxSpeed != "" && device.PCIeNegotiatedSpeed != "" && (device.PCIeCapabilityMaxSpeed != device.PCIeNegotiatedSpeed || device.PCIeCapabilityMaxWidth > device.PCIeNegotiatedWidth) {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "PCIe link is negotiated below capability", Evidence: fmt.Sprintf("%s negotiated %s x%d; capability is %s x%d", device.Address, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth), Recommendation: "Check slot wiring, bifurcation, firmware policy, bridge compatibility, and link training before treating the endpoint as fully provisioned."})
+		}
+		if device.PCIePathBottleneck != "" && device.PCIePathBottleneck != device.Address {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "PCIe path has a narrower bandwidth bottleneck", Evidence: fmt.Sprintf("%s path minimum is %s x%d at %s (%0.2f Gb/s aggregate)", device.Address, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.PCIePathBandwidthGbps), Recommendation: "Inspect the upstream bridge and slot topology; the endpoint may be limited even when its own negotiated link appears wide."})
+		}
+		if device.AERUncorrectableStatus != 0 || device.AERCorrectableStatus != 0 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "PCIe AER errors are present", Evidence: fmt.Sprintf("%s AER uncorrectable=0x%08x correctable=0x%08x", device.Address, device.AERUncorrectableStatus, device.AERCorrectableStatus), Recommendation: "Correlate AER status with kernel logs, slot/bridge health, power, cabling, and firmware before clearing counters."})
+		}
+	}
 	if s.System.THP != "" && len(s.System.THP) > 0 && s.System.THP[0:1] != "[" {
 		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Transparent huge pages are not shown as active", Evidence: s.System.THP, Recommendation: "Review transparent huge page policy against the requirements of the virtualization platform."})
 	}

@@ -35,3 +35,15 @@ func TestFindingsDetectSysctlConfiguration(t *testing.T) {
 		t.Fatalf("expected 2 sysctl findings, got %d", len(findings))
 	}
 }
+
+func TestPCIeFindings(t *testing.T) {
+	findings := Findings(model.Snapshot{PCI: []model.PCIDevice{{
+		Address: "0000:01:00.0", PCIeCapabilityMaxSpeed: "16.0 GT/s PCIe", PCIeCapabilityMaxWidth: 16,
+		PCIeNegotiatedSpeed: "8.0 GT/s PCIe", PCIeNegotiatedWidth: 8, PCIePathBottleneck: "0000:00:01.0",
+		PCIePathMinSpeed: "8.0 GT/s PCIe", PCIePathMinWidth: 8, PCIePathBandwidthGbps: 63.0,
+		AERCorrectableStatus: 1,
+	}}})
+	if len(findings) != 3 || findings[0].Category != "pcie" || findings[1].Title != "PCIe path has a narrower bandwidth bottleneck" || findings[2].Title != "PCIe AER errors are present" {
+		t.Fatalf("unexpected PCIe findings: %#v", findings)
+	}
+}

@@ -9,39 +9,63 @@ import (
 	"time"
 )
 
-func queryQMP(path string) (string, uint64, uint64, bool) {
+type qmpBalloonData struct {
+	status, source        string
+	actual, target        uint64
+	committed, available  uint64
+	reported, guestReport bool
+}
+
+func queryQMP(path string) (qmpBalloonData, bool) {
+	data := qmpBalloonData{}
 	if path == "" {
-		return "", 0, 0, false
+		return data, false
 	}
 	conn, err := net.DialTimeout("unix", path, 150*time.Millisecond)
 	if err != nil {
-		return "", 0, 0, false
+		return data, false
 	}
 	defer conn.Close()
 	_ = conn.SetDeadline(time.Now().Add(300 * time.Millisecond))
 	reader := bufio.NewReader(conn)
 	if _, ok := readQMPMessage(reader); !ok {
-		return "", 0, 0, false
+		return data, false
 	}
 	if _, err := writeQMPCommand(conn, reader, "qmp_capabilities"); err != nil {
-		return "", 0, 0, false
+		return data, false
 	}
-	status := ""
-	actual, target := uint64(0), uint64(0)
 	if response, err := writeQMPCommand(conn, reader, "query-status"); err == nil {
 		if value, ok := response["status"].(string); ok {
-			status = value
+			data.status = value
 		}
 	}
 	if response, err := writeQMPCommand(conn, reader, "query-balloon"); err == nil {
 		if value, ok := qmpUint(response["actual"]); ok {
-			actual = value
+			data.actual, data.reported = value, true
+			data.source = "query-balloon"
 		}
 		if value, ok := qmpUint(response["target"]); ok {
-			target = value
+			data.target = value
 		}
 	}
-	return status, actual, target, status != "" || actual != 0 || target != 0
+	// QEMU 8.2+ can expose the guest's committed and available memory through
+	// the Hyper-V balloon status report. It is an optional, read-only query.
+	if response, err := writeQMPCommand(conn, reader, "query-hv-balloon-status-report"); err == nil {
+		if value, ok := qmpUint(response["committed"]); ok {
+			data.committed = value
+			data.guestReport = true
+			data.reported = true
+		}
+		if value, ok := qmpUint(response["available"]); ok {
+			data.available = value
+			data.guestReport = true
+			data.reported = true
+		}
+		if data.guestReport {
+			data.source = "query-hv-balloon-status-report"
+		}
+	}
+	return data, data.status != "" || data.reported
 }
 
 func writeQMPCommand(conn net.Conn, reader *bufio.Reader, command string) (map[string]interface{}, error) {

@@ -180,6 +180,12 @@ type VirtualMachine struct {
 	BalloonEnabled        bool          `json:"balloon_enabled"`
 	BalloonActualBytes    uint64        `json:"balloon_actual_bytes,omitempty"`
 	BalloonTargetBytes    uint64        `json:"balloon_target_bytes,omitempty"`
+	BalloonReclaimedBytes uint64        `json:"balloon_reclaimed_bytes,omitempty"`
+	BalloonCommittedBytes uint64        `json:"balloon_committed_bytes,omitempty"`
+	BalloonAvailableBytes uint64        `json:"balloon_available_bytes,omitempty"`
+	BalloonReported       bool          `json:"balloon_reported"`
+	BalloonGuestReport    bool          `json:"balloon_guest_report"`
+	BalloonSource         string        `json:"balloon_source,omitempty"`
 	QMPStatus             string        `json:"qmp_status,omitempty"`
 	Disks                 []VirtualDisk `json:"disks,omitempty"`
 	NICs                  []VirtualNIC  `json:"nics,omitempty"`

@@ -93,6 +93,17 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "Configured guest memory exceeds host memory", Evidence: fmt.Sprintf("%.1f GiB allocated over %.1f GiB host memory (%.2fx)", float64(s.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), float64(s.Memory.TotalBytes)/(1024*1024*1024), s.Virtualization.MemoryOvercommitRatio), Recommendation: "Account for ballooning, paging, reservations, and host overhead before treating configured guest memory as physically available."})
 		}
 		for _, vm := range s.Virtualization.VirtualMachines {
+			if len(vm.NUMANodes) > 0 && s.NUMA.Nodes > 0 {
+				invalid := []int{}
+				for _, node := range vm.NUMANodes {
+					if node < 0 || node >= s.NUMA.Nodes {
+						invalid = append(invalid, node)
+					}
+				}
+				if len(invalid) > 0 {
+					findings = append(findings, model.Finding{Severity: "warning", Category: "numa", Title: "VM NUMA nodeset is outside host topology", Evidence: fmt.Sprintf("%s requests nodes %v but host reports %d NUMA nodes", vm.Name, invalid, s.NUMA.Nodes), Recommendation: "Correct the libvirt NUMA policy to use host node indexes; an invalid nodeset can prevent startup or defeat locality."})
+				}
+			}
 			if vm.CgroupAvailable && vm.MemoryMaxBytes > 0 && float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes) > 0.9 {
 				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "VM cgroup memory is near its limit", Evidence: fmt.Sprintf("%s uses %.1f%% of its cgroup memory limit", vm.Name, float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes)*100), Recommendation: "Review guest memory pressure, ballooning, host reclaim, and the domain memory limit before adding workload or increasing overcommit."})
 			}

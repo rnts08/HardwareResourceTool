@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0 — 2026-08-15
+
+- Refined KVM/QEMU accounting for newer QMP implementations used by current
+  Proxmox releases.
+- Added read-only QEMU 8.2+ Hyper-V balloon status reporting for guest
+  committed and available memory, while preserving the distinct logical
+  `query-balloon` value and its source.
+- Added libvirt NUMA nodeset exclusion parsing and findings for node indexes
+  outside the host NUMA topology.
+- Expanded VM text/TUI output with balloon semantics, NUMA placement, and
+  hugepage declarations.
+
 ## 0.8.0 — 2026-08-15
 
 - Added cgroup v2 CPU usage and memory-pressure accounting per QEMU domain.

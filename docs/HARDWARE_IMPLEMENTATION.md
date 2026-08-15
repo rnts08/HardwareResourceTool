@@ -82,11 +82,18 @@ process RSS is reported separately as host process usage. When cgroup v2 is
 available, current/max memory and aggregate read/write I/O are added; QEMU
 process CPU and `/proc/<pid>/io` are used as fallbacks. Disk, NIC, and PCI
 host-device attachments are retained, and bridge members are mapped back to
-physical NICs where possible. These values are not treated as guest actual
-usage: runtime balloon target accuracy, NUMA pinning validation, and richer QMP
-metrics remain future work. QMP access is bounded and uses only protocol
-negotiation plus `query-status`/`query-balloon`; no guest or host mutation is
-performed.
+physical NICs where possible. Libvirt hugepage declarations and NUMA nodesets
+are retained, and nodeset exclusions are validated against the host node count.
+QMP access is bounded and uses only protocol negotiation plus `query-status`,
+`query-balloon`, and the optional QEMU 8.2+ `query-hv-balloon-status-report`;
+no guest or host mutation is performed.
+
+`query-balloon.actual` is QEMU's logical VM size after ballooning, not resident
+host memory. The newer Hyper-V report is separate: `committed` includes guest
+use plus unusable/offline memory, while `available` is guest memory available
+for new allocations. When configured memory exceeds `actual`, the report also
+shows the derived reclaimed amount (`configured - actual`). Host cgroup current
+memory and QEMU RSS remain separate measurements.
 
 ## Server vendors
 

@@ -31,7 +31,7 @@ func TestCollectVirtualizationMergesLibvirtAndQEMUProcess(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(xmlPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(xmlPath, []byte(`<domain><name>guest-a</name><memory unit="MiB">8192</memory><vcpu placement="static">4</vcpu><devices><disk device="disk"><source file="/var/lib/libvirt/images/guest-a.qcow2"/><target dev="vda" bus="virtio"/></disk><interface type="bridge"><mac address="52:54:00:00:00:01"/><source bridge="br0"/><target dev="tap0"/></interface><hostdev type="pci"><source><address domain="0x0000" bus="0x65" slot="0x00" function="0x0"/></source></hostdev></devices></domain>`), 0o644); err != nil {
+	if err := os.WriteFile(xmlPath, []byte(`<domain><name>guest-a</name><memory unit="MiB">8192</memory><vcpu placement="static">4</vcpu><memoryBacking><hugepages><page size="2048" unit="KiB"/></hugepages></memoryBacking><numatune><memory mode="strict" nodeset="0-1,^1"/></numatune><devices><memballoon model="virtio"/><disk device="disk"><source file="/var/lib/libvirt/images/guest-a.qcow2"/><target dev="vda" bus="virtio"/></disk><interface type="bridge"><mac address="52:54:00:00:00:01"/><source bridge="br0"/><target dev="tap0"/></interface><hostdev type="pci"><source><address domain="0x0000" bus="0x65" slot="0x00" function="0x0"/></source></hostdev></devices></domain>`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	sys := t.TempDir()
@@ -56,7 +56,7 @@ func TestCollectVirtualizationMergesLibvirtAndQEMUProcess(t *testing.T) {
 		t.Fatalf("unexpected VM process data: %#v", virt.VirtualMachines[0])
 	}
 	vm := virt.VirtualMachines[0]
-	if !vm.CgroupAvailable || vm.MemoryCurrentBytes != 4294967296 || vm.ReadBytes != 1000 || vm.WriteBytes != 2000 || len(vm.Disks) != 1 || len(vm.NICs) != 1 || len(vm.PCIAddresses) != 1 {
+	if !vm.CgroupAvailable || vm.MemoryCurrentBytes != 4294967296 || vm.ReadBytes != 1000 || vm.WriteBytes != 2000 || len(vm.Disks) != 1 || len(vm.NICs) != 1 || len(vm.PCIAddresses) != 1 || !vm.Hugepages || vm.HugepageBytes != 2*1024*1024 || len(vm.NUMANodes) != 1 || vm.NUMANodes[0] != 0 || !vm.BalloonEnabled {
 		t.Fatalf("unexpected deep virtualization data: %#v", vm)
 	}
 }
@@ -74,6 +74,9 @@ func TestQEMUArgumentParsing(t *testing.T) {
 func TestVirtualizationParsers(t *testing.T) {
 	if got := parseNodeSet("0-2,4"); len(got) != 4 || got[2] != 2 || got[3] != 4 {
 		t.Fatalf("nodeset = %#v", got)
+	}
+	if got := parseNodeSet("0-3,^2,5"); len(got) != 4 || got[0] != 0 || got[2] != 3 || got[3] != 5 {
+		t.Fatalf("excluded nodeset = %#v", got)
 	}
 	if got := parseQMPPath("unix:/run/libvirt/qemu/guest.monitor,server=on,wait=off"); got != "/run/libvirt/qemu/guest.monitor" {
 		t.Fatalf("QMP path = %q", got)

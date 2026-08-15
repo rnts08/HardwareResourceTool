@@ -74,7 +74,8 @@ Acceptance: absent optional providers produce explicit availability state and no
 ## M0.2.9 — KVM/QEMU resource accounting
 
 Status: basic accounting implemented in `0.6.0`; deeper read-only usage and
-attachment accounting implemented in `0.7.0`.
+attachment accounting implemented in `0.7.0`; newer-QEMU balloon and NUMA
+validation implemented in `0.9.0`.
 
 - Discover KVM availability and QEMU processes without shelling out to `virsh`.
 - Parse libvirt domain XML when readable, with QEMU command-line fallback.
@@ -84,10 +85,11 @@ attachment accounting implemented in `0.7.0`.
 - Add conservative CPU/memory overcommit findings; do not represent guest
   configured memory as actual resident guest memory.
 
-Remaining: balloon target accuracy on QMP implementations that do not expose
-it, hugepage runtime consumption, NUMA runtime placement, and richer QMP
-metrics. QMP remains optional because the collector must not send mutating
-commands or assume socket access.
+Remaining: QMP memory-size summary and runtime hugepage consumption, NUMA
+runtime placement verification from `/proc/<pid>/numa_maps`, and richer QMP
+metrics. The QEMU 8.2+ Hyper-V balloon report is guest-reported and is kept
+separate from host cgroup/RSS values. QMP remains optional because the
+collector must not send mutating commands or assume socket access.
 
 ## Cross-cutting completion work
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -224,12 +225,22 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 }
 
 func applyQMP(vm *model.VirtualMachine, path string) {
-	status, actual, target, ok := queryQMP(path)
+	data, ok := queryQMP(path)
 	if !ok {
 		return
 	}
-	vm.QMPStatus, vm.BalloonActualBytes, vm.BalloonTargetBytes = status, actual, target
-	vm.BalloonEnabled = true
+	vm.QMPStatus = data.status
+	vm.BalloonActualBytes = data.actual
+	vm.BalloonTargetBytes = data.target
+	if vm.ConfiguredMemoryBytes > data.actual {
+		vm.BalloonReclaimedBytes = vm.ConfiguredMemoryBytes - data.actual
+	}
+	vm.BalloonCommittedBytes = data.committed
+	vm.BalloonAvailableBytes = data.available
+	vm.BalloonReported = data.reported
+	vm.BalloonGuestReport = data.guestReport
+	vm.BalloonSource = data.source
+	vm.BalloonEnabled = data.reported
 }
 
 func memoryBytes(memory memoryXML) uint64 {
@@ -418,25 +429,44 @@ func cgroupCPUPercent(pid int, usage uint64, raw *rawCounters, seconds float64) 
 }
 
 func parseNodeSet(value string) []int {
-	result := []int{}
+	include := map[int]bool{}
+	exclude := map[int]bool{}
 	for _, item := range strings.Split(strings.TrimSpace(value), ",") {
+		item = strings.TrimSpace(item)
 		if item == "" {
 			continue
 		}
+		excluded := strings.HasPrefix(item, "^")
+		item = strings.TrimPrefix(item, "^")
+		values := []int{}
 		if strings.Contains(item, "-") {
 			parts := strings.SplitN(item, "-", 2)
-			start, _ := strconv.Atoi(parts[0])
-			end, _ := strconv.Atoi(parts[1])
-			for node := start; node <= end; node++ {
-				result = append(result, node)
+			start, errStart := strconv.Atoi(strings.TrimSpace(parts[0]))
+			end, errEnd := strconv.Atoi(strings.TrimSpace(parts[1]))
+			if errStart != nil || errEnd != nil || start < 0 || end < start || end-start > 4096 {
+				continue
 			}
-			continue
+			for node := start; node <= end; node++ {
+				values = append(values, node)
+			}
+		} else if node, err := strconv.Atoi(item); err == nil && node >= 0 {
+			values = append(values, node)
 		}
-		node, err := strconv.Atoi(item)
-		if err == nil {
+		for _, node := range values {
+			if excluded {
+				exclude[node] = true
+			} else {
+				include[node] = true
+			}
+		}
+	}
+	result := make([]int, 0, len(include))
+	for node := range include {
+		if !exclude[node] {
 			result = append(result, node)
 		}
 	}
+	sort.Ints(result)
 	return result
 }
 

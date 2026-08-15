@@ -9,6 +9,7 @@ type Snapshot struct {
 	CPU         CPU            `json:"cpu"`
 	Memory      Memory         `json:"memory"`
 	Disks       []Disk         `json:"disks"`
+	Filesystems []Filesystem   `json:"filesystems"`
 	Networks    []Network      `json:"networks"`
 	NUMA        NUMA           `json:"numa"`
 	System      SystemSettings `json:"system"`
@@ -62,6 +63,20 @@ type Network struct {
 	TXErrors      int64   `json:"tx_errors"`
 	RXDrops       int64   `json:"rx_drops"`
 	TXDrops       int64   `json:"tx_drops"`
+	LinkSpeedMbps int64   `json:"link_speed_mbps,omitempty"`
+	MTU           int64   `json:"mtu,omitempty"`
+	RXQueues      int64   `json:"rx_queues,omitempty"`
+	TXQueues      int64   `json:"tx_queues,omitempty"`
+}
+
+type Filesystem struct {
+	Device         string  `json:"device"`
+	MountPoint     string  `json:"mount_point"`
+	Type           string  `json:"type"`
+	TotalBytes     uint64  `json:"total_bytes"`
+	AvailableBytes uint64  `json:"available_bytes"`
+	UsedPercent    float64 `json:"used_percent"`
+	ReadOnly       bool    `json:"read_only"`
 }
 
 type NUMA struct {
@@ -70,11 +85,13 @@ type NUMA struct {
 }
 
 type SystemSettings struct {
-	CPUGovernor string `json:"cpu_governor,omitempty"`
-	THP         string `json:"transparent_hugepages,omitempty"`
-	Swappiness  int64  `json:"swappiness"`
-	OpenFiles   uint64 `json:"open_files_limit"`
-	MaxLocked   uint64 `json:"max_locked_memory_bytes"`
+	CPUGovernor  string `json:"cpu_governor,omitempty"`
+	THP          string `json:"transparent_hugepages,omitempty"`
+	Swappiness   int64  `json:"swappiness"`
+	OpenFiles    uint64 `json:"open_files_limit"`
+	MaxLocked    uint64 `json:"max_locked_memory_bytes"`
+	MaxProcesses uint64 `json:"max_processes_limit"`
+	MaxStack     uint64 `json:"max_stack_bytes"`
 }
 
 type Finding struct {

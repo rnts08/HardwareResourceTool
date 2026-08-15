@@ -9,7 +9,7 @@ Show actual hardware usage out of actual capacity to identify bottlenecks
 Find limits and other factors in system settings and configuration that may limit or slow down the machine
 
 ## Third Goal
-Suggest chaanges to speed up or free up bottlenecks, including numactl, ioctl, sysctl and all other available tunable settings.
+Suggest changes to speed up or free up bottlenecks, including numactl, ioctl, sysctl and other available tunable settings.
 
 ## Interface
 
@@ -21,6 +21,11 @@ sudo hardware-resources report --json --duration 5s
 sudo hardware-resources check
 hardware-resources version
 ```
+
+The TUI refreshes continuously and provides four views: Overview, Storage,
+Network, and Findings. Use `1`–`4` or `h`/`l` (arrow keys and Tab also work)
+to navigate, and `q` to quit. Overview retains the last 60 samples for compact
+CPU and memory sparklines.
 
 The tool requires root for consistent host diagnostics. It never changes host settings and only provides advisory recommendations.
 
@@ -35,5 +40,17 @@ go build -o hardware-resources ./cmd/hardware-resources
 go test ./...
 ```
 
+For a root-only live smoke test that captures text and JSON output under `/tmp`:
+
+```sh
+sudo ./scripts/live-collection-test.sh --duration 5s
+```
+
 The current v1 focuses on core host bottlenecks. GPU, deep PCIe analysis, and automatic tuning are intentionally deferred.
+
+Release version: `0.2.0`. Release builds can override it with:
+
+```sh
+go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.2.0" -o hardware-resources ./cmd/hardware-resources
+```
  

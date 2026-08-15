@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"hardware-resources-tool/internal/model"
@@ -21,11 +22,13 @@ type Collector struct {
 }
 
 type rawCounters struct {
-	cpuUser, cpuSystem, cpuIOWait, cpuIdle uint64
-	contextSwitches, interrupts            uint64
-	swapIn, swapOut                        uint64
-	disks                                  map[string]diskCounter
-	networks                               map[string]networkCounter
+	cpuUser, cpuNice, cpuSystem, cpuIOWait, cpuIdle uint64
+	cpuIRQ, cpuSoftIRQ, cpuSteal                    uint64
+	contextSwitches, interrupts                     uint64
+	swapIn, swapOut                                 uint64
+	numaRemote                                      uint64
+	disks                                           map[string]diskCounter
+	networks                                        map[string]networkCounter
 }
 
 type diskCounter struct{ reads, sectorsRead, writes, sectorsWritten, inFlight uint64 }
@@ -37,7 +40,7 @@ func New() *Collector {
 
 func (c *Collector) Snapshot() model.Snapshot {
 	now := time.Now().UTC()
-	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Networks: []model.Network{}, Errors: []string{}}
+	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Filesystems: []model.Filesystem{}, Networks: []model.Network{}, Errors: []string{}}
 	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}}
 
 	if err := c.collectCPU(&snapshot, &current); err != nil {
@@ -52,7 +55,10 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectNetworks(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectSystem(&snapshot); err != nil {
+	if err := c.collectFilesystems(&snapshot); err != nil {
+		snapshot.Errors = append(snapshot.Errors, err.Error())
+	}
+	if err := c.collectSystem(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 
@@ -98,15 +104,32 @@ func (c *Collector) collectCPU(s *model.Snapshot, raw *rawCounters) error {
 		if len(fields) < 5 || fields[0] != "cpu" {
 			continue
 		}
-		values := make([]uint64, 5)
+		// user, nice, system, idle, iowait, irq, softirq, steal
+		if len(fields) < 9 {
+			return fmt.Errorf("cpu: expected at least 8 counters")
+		}
+		values := make([]uint64, 8)
 		for i := range values {
 			values[i], err = parseUint(fields[i+1])
 			if err != nil {
 				return fmt.Errorf("cpu counter: %w", err)
 			}
 		}
-		raw.cpuUser, raw.cpuSystem, raw.cpuIdle, raw.cpuIOWait = values[0], values[2], values[3], values[4]
-		break
+		raw.cpuUser, raw.cpuNice, raw.cpuSystem = values[0], values[1], values[2]
+		raw.cpuIdle, raw.cpuIOWait = values[3], values[4]
+		raw.cpuIRQ, raw.cpuSoftIRQ, raw.cpuSteal = values[5], values[6], values[7]
+	}
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+		switch fields[0] {
+		case "ctxt":
+			raw.contextSwitches, _ = parseUint(fields[1])
+		case "intr":
+			raw.interrupts, _ = parseUint(fields[1])
+		}
 	}
 	load, err := readLines(filepath.Join(c.procRoot, "loadavg"))
 	if err != nil {
@@ -146,13 +169,18 @@ func (c *Collector) collectMemory(s *model.Snapshot, raw *rawCounters) error {
 	if s.Memory.TotalBytes > 0 {
 		s.Memory.UsedPercent = float64(s.Memory.TotalBytes-s.Memory.AvailableBytes) / float64(s.Memory.TotalBytes) * 100
 	}
-	for _, line := range lines {
-		parts := strings.Fields(line)
-		if len(parts) == 2 && parts[0] == "pswpin" {
-			raw.swapIn, _ = parseUint(parts[1])
-		}
-		if len(parts) == 2 && parts[0] == "pswpout" {
-			raw.swapOut, _ = parseUint(parts[1])
+	if vmstat, vmstatErr := readLines(filepath.Join(c.procRoot, "vmstat")); vmstatErr == nil {
+		for _, line := range vmstat {
+			parts := strings.Fields(line)
+			if len(parts) != 2 {
+				continue
+			}
+			switch parts[0] {
+			case "pswpin":
+				raw.swapIn, _ = parseUint(parts[1])
+			case "pswpout":
+				raw.swapOut, _ = parseUint(parts[1])
+			}
 		}
 	}
 	return nil
@@ -210,19 +238,91 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 			values[key], _ = parseUint(string(data))
 		}
 		state, _ := os.ReadFile(filepath.Join(c.sysRoot, "class/net", name, "operstate"))
+		linkSpeed, _ := readSysInt(filepath.Join(c.sysRoot, "class/net", name, "speed"))
+		if linkSpeed < 0 {
+			linkSpeed = 0
+		}
+		mtu, _ := readSysInt(filepath.Join(c.sysRoot, "class/net", name, "mtu"))
+		rxQueues := int64(len(glob(filepath.Join(c.sysRoot, "class/net", name, "queues/rx-*"))))
+		txQueues := int64(len(glob(filepath.Join(c.sysRoot, "class/net", name, "queues/tx-*"))))
 		raw.networks[name] = networkCounter{rxBytes: values["rx_bytes"], txBytes: values["tx_bytes"], rxPackets: values["rx_packets"], txPackets: values["tx_packets"], rxErrors: values["rx_errors"], txErrors: values["tx_errors"], rxDrops: values["rx_dropped"], txDrops: values["tx_dropped"]}
-		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"])})
+		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues})
 	}
 	return nil
 }
 
-func (c *Collector) collectSystem(s *model.Snapshot) error {
+func (c *Collector) collectFilesystems(s *model.Snapshot) error {
+	lines, err := readLines(filepath.Join(c.procRoot, "mounts"))
+	if err != nil {
+		return fmt.Errorf("filesystems: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
+		}
+		mountPoint := decodeMountField(fields[1])
+		if seen[mountPoint] {
+			continue
+		}
+		seen[mountPoint] = true
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(mountPoint, &stat); err != nil {
+			continue
+		}
+		total := uint64(stat.Blocks) * uint64(stat.Bsize)
+		available := uint64(stat.Bavail) * uint64(stat.Bsize)
+		used := float64(0)
+		if total > 0 {
+			used = float64(total-available) / float64(total) * 100
+		}
+		readOnly := false
+		for _, option := range strings.Split(fields[3], ",") {
+			if option == "ro" {
+				readOnly = true
+				break
+			}
+		}
+		s.Filesystems = append(s.Filesystems, model.Filesystem{Device: decodeMountField(fields[0]), MountPoint: mountPoint, Type: fields[2], TotalBytes: total, AvailableBytes: available, UsedPercent: used, ReadOnly: readOnly})
+	}
+	return nil
+}
+
+func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 	var errs []string
 	if data, err := os.ReadFile(filepath.Join(c.sysRoot, "kernel/mm/transparent_hugepage/enabled")); err == nil {
 		s.System.THP = strings.TrimSpace(string(data))
 	}
 	if data, err := os.ReadFile(filepath.Join(c.sysRoot, "vm/swappiness")); err == nil {
 		s.System.Swappiness, _ = parseInt(string(data))
+	}
+	governors := map[string]bool{}
+	for _, path := range glob(filepath.Join(c.sysRoot, "devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
+		if data, err := os.ReadFile(path); err == nil {
+			governors[strings.TrimSpace(string(data))] = true
+		}
+	}
+	if len(governors) > 0 {
+		values := make([]string, 0, len(governors))
+		for governor := range governors {
+			values = append(values, governor)
+		}
+		s.System.CPUGovernor = strings.Join(values, ",")
+	}
+	s.NUMA.Nodes = len(glob(filepath.Join(c.sysRoot, "devices/system/node/node[0-9]*")))
+	for _, node := range glob(filepath.Join(c.sysRoot, "devices/system/node/node[0-9]*")) {
+		if data, err := os.ReadFile(filepath.Join(node, "numastat")); err == nil {
+			for _, line := range strings.Split(string(data), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 && (fields[0] == "numa_miss" || fields[0] == "numa_foreign") {
+					value, parseErr := parseUint(fields[1])
+					if parseErr == nil {
+						raw.numaRemote += value
+					}
+				}
+			}
+		}
 	}
 	if data, err := os.ReadFile("/proc/self/limits"); err == nil {
 		for _, line := range strings.Split(string(data), "\n") {
@@ -239,6 +339,19 @@ func (c *Collector) collectSystem(s *model.Snapshot) error {
 					s.System.MaxLocked *= 1024
 				}
 			}
+			if strings.HasPrefix(line, "Max processes") {
+				fields := strings.Fields(line)
+				if len(fields) >= 4 && fields[3] != "unlimited" {
+					s.System.MaxProcesses, _ = parseUint(fields[3])
+				}
+			}
+			if strings.HasPrefix(line, "Max stack size") {
+				fields := strings.Fields(line)
+				if len(fields) >= 4 && fields[3] != "unlimited" {
+					s.System.MaxStack, _ = parseUint(fields[3])
+					s.System.MaxStack *= 1024
+				}
+			}
 		}
 	} else {
 		errs = append(errs, err.Error())
@@ -247,6 +360,28 @@ func (c *Collector) collectSystem(s *model.Snapshot) error {
 		return errors.Join(errors.New("system settings"), errors.Join(toErrors(errs)...))
 	}
 	return nil
+}
+
+func readSysInt(path string) (int64, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	return parseInt(string(data))
+}
+
+func glob(pattern string) []string {
+	paths, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil
+	}
+	return paths
+}
+
+func decodeMountField(value string) string {
+	value = strings.ReplaceAll(value, `\040`, " ")
+	value = strings.ReplaceAll(value, `\011`, "\t")
+	return strings.ReplaceAll(value, `\134`, `\`)
 }
 
 func toErrors(messages []string) []error {
@@ -266,16 +401,27 @@ func runtimeCPUCount() int {
 }
 
 func applyRates(s *model.Snapshot, previous *rawCounters, current *rawCounters, seconds float64) {
-	total := float64((current.cpuUser + current.cpuSystem + current.cpuIOWait + current.cpuIdle) - (previous.cpuUser + previous.cpuSystem + previous.cpuIOWait + previous.cpuIdle))
+	user := delta(current.cpuUser, previous.cpuUser)
+	nice := delta(current.cpuNice, previous.cpuNice)
+	system := delta(current.cpuSystem, previous.cpuSystem)
+	iowait := delta(current.cpuIOWait, previous.cpuIOWait)
+	idle := delta(current.cpuIdle, previous.cpuIdle)
+	irq := delta(current.cpuIRQ, previous.cpuIRQ)
+	softIRQ := delta(current.cpuSoftIRQ, previous.cpuSoftIRQ)
+	steal := delta(current.cpuSteal, previous.cpuSteal)
+	total := float64(user + nice + system + iowait + idle + irq + softIRQ + steal)
 	if total > 0 {
-		s.CPU.UserPercent = float64(current.cpuUser-previous.cpuUser) / total * 100
-		s.CPU.SystemPercent = float64(current.cpuSystem-previous.cpuSystem) / total * 100
-		s.CPU.IOWaitPercent = float64(current.cpuIOWait-previous.cpuIOWait) / total * 100
-		s.CPU.IdlePercent = float64(current.cpuIdle-previous.cpuIdle) / total * 100
+		s.CPU.UserPercent = float64(user) / total * 100
+		s.CPU.SystemPercent = float64(system+irq+softIRQ) / total * 100
+		s.CPU.IOWaitPercent = float64(iowait) / total * 100
+		s.CPU.IdlePercent = float64(idle) / total * 100
+		s.CPU.ContextSwitch = int64(float64(delta(current.contextSwitches, previous.contextSwitches)) / seconds)
+		s.CPU.Interrupts = int64(float64(delta(current.interrupts, previous.interrupts)) / seconds)
 	}
 	swapIn := delta(current.swapIn, previous.swapIn)
 	swapOut := delta(current.swapOut, previous.swapOut)
 	s.Memory.SwapInPerSec, s.Memory.SwapOutPerSec = int64(float64(swapIn)/seconds), int64(float64(swapOut)/seconds)
+	s.NUMA.RemoteEvents = int64(float64(delta(current.numaRemote, previous.numaRemote)) / seconds)
 	for i := range s.Disks {
 		currentDisk, ok := current.disks[s.Disks[i].Name]
 		previousDisk := previous.disks[s.Disks[i].Name]

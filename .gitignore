@@ -1,0 +1,9 @@
+# Local handoff notes are intentionally not part of release commits.
+WORKFILE.md
+
+# Local build artifacts.
+/hardware-resources
+/hardware-resources-*
+
+# Test and coverage output.
+coverage.out

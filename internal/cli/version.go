@@ -7,7 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var version = "dev"
+// version is overridden by release builds with -ldflags '-X hardware-resources-tool/internal/cli.version=...'.
+var version = "0.2.0"
 
 func init() {
 	rootCmd.AddCommand(&cobra.Command{Use: "version", Short: "Print version information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, _ []string) {

@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"time"
+
 	"github.com/spf13/cobra"
 	"hardware-resources-tool/internal/collect"
 	"hardware-resources-tool/internal/report"
@@ -11,7 +13,7 @@ func init() {
 		if err := requireRoot(); err != nil {
 			return err
 		}
-		result := report.Collect(collect.New(), 0)
+		result := report.Collect(collect.New(), time.Second)
 		return report.WriteText(cmd.OutOrStdout(), result)
 	}})
 }

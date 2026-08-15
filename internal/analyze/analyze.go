@@ -20,8 +20,15 @@ func Findings(s model.Snapshot) []model.Finding {
 	if s.Memory.SwapInPerSec > 0 || s.Memory.SwapOutPerSec > 0 {
 		findings = append(findings, model.Finding{Severity: "warning", Category: "memory", Title: "Swap activity detected", Evidence: fmt.Sprintf("Swap in: %d/s, swap out: %d/s", s.Memory.SwapInPerSec, s.Memory.SwapOutPerSec), Recommendation: "Investigate memory pressure and consider reserving more host memory for virtualization workloads."})
 	}
+	for _, filesystem := range s.Filesystems {
+		if filesystem.UsedPercent > 95 {
+			findings = append(findings, model.Finding{Severity: "critical", Category: "storage", Title: "Filesystem capacity is nearly exhausted", Evidence: fmt.Sprintf("%s is %.1f%% full", filesystem.MountPoint, filesystem.UsedPercent), Recommendation: "Remove or relocate data, expand the filesystem, and keep adequate free space for host and guest I/O."})
+		} else if filesystem.UsedPercent > 85 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "storage", Title: "Filesystem capacity is high", Evidence: fmt.Sprintf("%s is %.1f%% full", filesystem.MountPoint, filesystem.UsedPercent), Recommendation: "Monitor growth and plan cleanup or capacity expansion before the filesystem becomes a bottleneck."})
+		}
+	}
 	for _, network := range s.Networks {
-		if network.RXErrors > 0 || network.TXErrors > 0 || network.RXDrops > 0 || network.TXDrops > 0 {
+		if network.State != "down" && (network.RXErrors > 0 || network.TXErrors > 0 || network.RXDrops > 0 || network.TXDrops > 0) {
 			findings = append(findings, model.Finding{Severity: "warning", Category: "network", Title: "Network errors or drops detected", Evidence: fmt.Sprintf("%s errors rx=%d tx=%d, drops rx=%d tx=%d", network.Name, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops), Recommendation: "Inspect NIC health, link negotiation, driver counters, queue sizing, and host network contention."})
 		}
 	}

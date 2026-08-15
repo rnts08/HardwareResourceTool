@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.2 — 2026-08-15
+
+- Added configurable analysis thresholds to `check` and `report`.
+- Added init-process host limits alongside current-process limits.
+- Added Linux NIC ring-size probing through a read-only ethtool ioctl.
+- Added terminal-size-aware TUI clipping and commit/build metadata in `version`.
+
 ## 0.2.1 — 2026-08-15
 
 - Added selected VM and kernel sysctl values to JSON, text, and TUI reports.

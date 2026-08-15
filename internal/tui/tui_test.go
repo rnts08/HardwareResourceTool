@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"hardware-resources-tool/internal/model"
@@ -39,5 +40,17 @@ func TestHistoryIsBounded(t *testing.T) {
 	m.history = m.history[len(m.history)-historyLimit:]
 	if len(m.history) != historyLimit {
 		t.Fatalf("expected history limit %d, got %d", historyLimit, len(m.history))
+	}
+}
+
+func TestFitViewRespectsTerminalSize(t *testing.T) {
+	view := fitView("one\ntwo\nthree\nfooter", 4, 3)
+	if !contains(view, "… o") || !contains(view, "foo") {
+		t.Fatalf("view was not clipped as expected: %q", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if len([]rune(line)) > 4 {
+			t.Fatalf("line exceeds width: %q", line)
+		}
 	}
 }

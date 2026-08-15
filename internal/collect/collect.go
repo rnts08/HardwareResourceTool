@@ -245,8 +245,9 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 		mtu, _ := readSysInt(filepath.Join(c.sysRoot, "class/net", name, "mtu"))
 		rxQueues := int64(len(glob(filepath.Join(c.sysRoot, "class/net", name, "queues/rx-*"))))
 		txQueues := int64(len(glob(filepath.Join(c.sysRoot, "class/net", name, "queues/tx-*"))))
+		rxRing, txRing := networkRingSizes(name)
 		raw.networks[name] = networkCounter{rxBytes: values["rx_bytes"], txBytes: values["tx_bytes"], rxPackets: values["rx_packets"], txPackets: values["tx_packets"], rxErrors: values["rx_errors"], txErrors: values["tx_errors"], rxDrops: values["rx_dropped"], txDrops: values["tx_dropped"]}
-		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues})
+		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues, RXRingSize: rxRing, TXRingSize: txRing})
 	}
 	return nil
 }
@@ -338,42 +339,47 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 			}
 		}
 	}
-	if data, err := os.ReadFile("/proc/self/limits"); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			if strings.HasPrefix(line, "Max open files") {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 {
-					s.System.OpenFiles, _ = parseUint(fields[3])
-				}
-			}
-			if strings.HasPrefix(line, "Max locked memory") {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 && fields[3] != "unlimited" {
-					s.System.MaxLocked, _ = parseUint(fields[3])
-					s.System.MaxLocked *= 1024
-				}
-			}
-			if strings.HasPrefix(line, "Max processes") {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 && fields[3] != "unlimited" {
-					s.System.MaxProcesses, _ = parseUint(fields[3])
-				}
-			}
-			if strings.HasPrefix(line, "Max stack size") {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 && fields[3] != "unlimited" {
-					s.System.MaxStack, _ = parseUint(fields[3])
-					s.System.MaxStack *= 1024
-				}
-			}
-		}
+	if limits, err := readLimits("/proc/self/limits"); err == nil {
+		s.System.OpenFiles, s.System.MaxLocked, s.System.MaxProcesses, s.System.MaxStack = limits.OpenFiles, limits.MaxLocked, limits.MaxProcesses, limits.MaxStack
 	} else {
 		errs = append(errs, err.Error())
+	}
+	if limits, err := readLimits("/proc/1/limits"); err == nil {
+		s.System.HostLimits = limits
 	}
 	if len(errs) > 0 {
 		return errors.Join(errors.New("system settings"), errors.Join(toErrors(errs)...))
 	}
 	return nil
+}
+
+func readLimits(path string) (model.Limits, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return model.Limits{}, err
+	}
+	var limits model.Limits
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[3] == "unlimited" {
+			continue
+		}
+		value, parseErr := parseUint(fields[3])
+		if parseErr != nil {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "Max open files"):
+			limits.OpenFiles = value
+		case strings.HasPrefix(line, "Max locked memory"):
+			limits.MaxLocked = value * 1024
+		case strings.HasPrefix(line, "Max processes"):
+			limits.MaxProcesses = value
+		case strings.HasPrefix(line, "Max stack size"):
+			limits.MaxStack = value * 1024
+		}
+	}
+	return limits, nil
 }
 
 func readSysInt(path string) (int64, error) {

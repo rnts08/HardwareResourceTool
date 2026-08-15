@@ -7,11 +7,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// version is overridden by release builds with -ldflags '-X hardware-resources-tool/internal/cli.version=...'.
-var version = "0.2.1"
+// Release builds can set all three values with -ldflags.
+var version = "0.2.2"
+var buildCommit = "unknown"
+var buildDate = "unknown"
 
 func init() {
 	rootCmd.AddCommand(&cobra.Command{Use: "version", Short: "Print version information", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, _ []string) {
-		fmt.Fprintf(cmd.OutOrStdout(), "hardware-resources %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(cmd.OutOrStdout(), "hardware-resources %s (%s/%s) commit=%s built=%s\n", version, runtime.GOOS, runtime.GOARCH, buildCommit, buildDate)
 	}})
 }

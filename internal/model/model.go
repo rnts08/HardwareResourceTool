@@ -67,6 +67,8 @@ type Network struct {
 	MTU           int64   `json:"mtu,omitempty"`
 	RXQueues      int64   `json:"rx_queues,omitempty"`
 	TXQueues      int64   `json:"tx_queues,omitempty"`
+	RXRingSize    int64   `json:"rx_ring_size,omitempty"`
+	TXRingSize    int64   `json:"tx_ring_size,omitempty"`
 }
 
 type Filesystem struct {
@@ -93,6 +95,14 @@ type SystemSettings struct {
 	MaxProcesses uint64            `json:"max_processes_limit"`
 	MaxStack     uint64            `json:"max_stack_bytes"`
 	Sysctls      map[string]string `json:"sysctls,omitempty"`
+	HostLimits   Limits            `json:"host_limits"`
+}
+
+type Limits struct {
+	OpenFiles    uint64 `json:"open_files_limit"`
+	MaxLocked    uint64 `json:"max_locked_memory_bytes"`
+	MaxProcesses uint64 `json:"max_processes_limit"`
+	MaxStack     uint64 `json:"max_stack_bytes"`
 }
 
 type Finding struct {

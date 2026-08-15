@@ -7,24 +7,44 @@ import (
 	"hardware-resources-tool/internal/model"
 )
 
+type Thresholds struct {
+	CPUIdleCritical        float64
+	IOWaitWarning          float64
+	MemoryUsedCritical     float64
+	FilesystemUsedWarning  float64
+	FilesystemUsedCritical float64
+}
+
+var DefaultThresholds = Thresholds{
+	CPUIdleCritical:        10,
+	IOWaitWarning:          15,
+	MemoryUsedCritical:     90,
+	FilesystemUsedWarning:  85,
+	FilesystemUsedCritical: 95,
+}
+
 func Findings(s model.Snapshot) []model.Finding {
+	return FindingsWithThresholds(s, DefaultThresholds)
+}
+
+func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Finding {
 	findings := []model.Finding{}
-	if s.CPU.LogicalCPUs > 0 && s.CPU.IdlePercent < 10 {
+	if s.CPU.LogicalCPUs > 0 && s.CPU.IdlePercent < thresholds.CPUIdleCritical {
 		findings = append(findings, model.Finding{Severity: "critical", Category: "cpu", Title: "CPU capacity is heavily utilized", Evidence: fmt.Sprintf("Only %.1f%% idle CPU was observed", s.CPU.IdlePercent), Recommendation: "Inspect vCPU overcommitment and guest CPU demand; consider reducing host overcommitment or moving workloads."})
 	}
-	if s.CPU.IOWaitPercent > 15 {
+	if s.CPU.IOWaitPercent > thresholds.IOWaitWarning {
 		findings = append(findings, model.Finding{Severity: "warning", Category: "storage", Title: "CPU is waiting on I/O", Evidence: fmt.Sprintf("CPU iowait is %.1f%%", s.CPU.IOWaitPercent), Recommendation: "Inspect storage latency, queue depth, and contention on the backing devices."})
 	}
-	if s.Memory.UsedPercent > 90 {
+	if s.Memory.UsedPercent > thresholds.MemoryUsedCritical {
 		findings = append(findings, model.Finding{Severity: "critical", Category: "memory", Title: "Memory capacity is nearly exhausted", Evidence: fmt.Sprintf("Memory utilization is %.1f%%", s.Memory.UsedPercent), Recommendation: "Reduce guest memory overcommitment or add capacity; verify reclaim and swap activity."})
 	}
 	if s.Memory.SwapInPerSec > 0 || s.Memory.SwapOutPerSec > 0 {
 		findings = append(findings, model.Finding{Severity: "warning", Category: "memory", Title: "Swap activity detected", Evidence: fmt.Sprintf("Swap in: %d/s, swap out: %d/s", s.Memory.SwapInPerSec, s.Memory.SwapOutPerSec), Recommendation: "Investigate memory pressure and consider reserving more host memory for virtualization workloads."})
 	}
 	for _, filesystem := range s.Filesystems {
-		if filesystem.UsedPercent > 95 {
+		if filesystem.UsedPercent > thresholds.FilesystemUsedCritical {
 			findings = append(findings, model.Finding{Severity: "critical", Category: "storage", Title: "Filesystem capacity is nearly exhausted", Evidence: fmt.Sprintf("%s is %.1f%% full", filesystem.MountPoint, filesystem.UsedPercent), Recommendation: "Remove or relocate data, expand the filesystem, and keep adequate free space for host and guest I/O."})
-		} else if filesystem.UsedPercent > 85 {
+		} else if filesystem.UsedPercent > thresholds.FilesystemUsedWarning {
 			findings = append(findings, model.Finding{Severity: "warning", Category: "storage", Title: "Filesystem capacity is high", Evidence: fmt.Sprintf("%s is %.1f%% full", filesystem.MountPoint, filesystem.UsedPercent), Recommendation: "Monitor growth and plan cleanup or capacity expansion before the filesystem becomes a bottleneck."})
 		}
 	}

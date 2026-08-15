@@ -92,7 +92,32 @@ func (m modelState) View() string {
 		fmt.Fprintf(&b, "\nCollector errors: %s\n", strings.Join(m.snapshot.Errors, "; "))
 	}
 	b.WriteString("\n1-4: tabs  h/left: previous  l/right/tab: next  q: quit")
-	return b.String()
+	return fitView(b.String(), m.width, m.height)
+}
+
+func fitView(content string, width, height int) string {
+	lines := strings.Split(content, "\n")
+	if height > 0 && len(lines) > height {
+		footer := lines[len(lines)-1]
+		lines = append(lines[:height-2], "… output truncated; switch tabs for detail", footer)
+	}
+	if width > 0 {
+		for i, line := range lines {
+			lines[i] = truncate(line, width)
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+func truncate(value string, width int) string {
+	if width <= 0 || len([]rune(value)) <= width {
+		return value
+	}
+	runes := []rune(value)
+	if width == 1 {
+		return "…"
+	}
+	return string(runes[:width-1]) + "…"
 }
 
 func viewOverview(b *strings.Builder, snapshot model.Snapshot, history []model.Snapshot) {
@@ -105,6 +130,7 @@ func viewOverview(b *strings.Builder, snapshot model.Snapshot, history []model.S
 	fmt.Fprintf(b, "        used   %s\n", sparkline(memoryUsed, 0, 100))
 	fmt.Fprintf(b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
 	fmt.Fprintf(b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
+	fmt.Fprintf(b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
 	if len(snapshot.System.Sysctls) > 0 {
 		fmt.Fprintf(b, "        sysctls %v\n", snapshot.System.Sysctls)
 	}
@@ -134,7 +160,7 @@ func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
 		b.WriteString("  No network interfaces reported.\n")
 	}
 	for _, network := range snapshot.Networks {
-		fmt.Fprintf(b, "  %-16s %-8s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		fmt.Fprintf(b, "  %-16s %-8s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
 	}
 }
 

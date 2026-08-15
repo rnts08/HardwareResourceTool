@@ -48,9 +48,12 @@ Reference: <https://docs.kernel.org/next/admin-guide/ras.html>
 ## NVIDIA GPUs
 
 NVIDIA display and 3D PCI functions (`vendor=0x10de`) are identified from the
-PCI inventory. The `GPU` model is ready for optional NVML enrichment: UUID,
-memory, utilization, temperature, ECC, power, MIG, and NVLink should come from
-the dynamically loaded NVML library rather than an `nvidia-smi` subprocess.
+PCI inventory is enriched by an optional dynamically loaded NVML library:
+UUID, name, framebuffer memory, utilization, temperature, and power are read
+through NVML getters. NVML is never linked at build time and no `nvidia-smi`
+subprocess is used. Missing libraries, unavailable devices, and unsupported
+getters remain explicit availability status in the model. ECC, MIG, and NVLink
+remain future enrichment fields.
 
 Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 

@@ -135,9 +135,13 @@ type GPU struct {
 	VendorID           string  `json:"vendor_id"`
 	DeviceID           string  `json:"device_id"`
 	Name               string  `json:"name,omitempty"`
+	UUID               string  `json:"uuid,omitempty"`
 	MemoryBytes        uint64  `json:"memory_bytes,omitempty"`
 	UtilizationPercent float64 `json:"utilization_percent,omitempty"`
 	TemperatureCelsius float64 `json:"temperature_celsius,omitempty"`
+	PowerWatts         float64 `json:"power_watts,omitempty"`
+	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
+	NVMLStatus         string  `json:"nvml_status,omitempty"`
 	NVML               bool    `json:"nvml_available"`
 }
 

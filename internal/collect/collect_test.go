@@ -158,6 +158,15 @@ func TestCollectPCIAndNVIDIAIdentity(t *testing.T) {
 	}
 }
 
+func TestNormalizePCIAddress(t *testing.T) {
+	if got := normalizePCIAddress("00000000:65:00.0"); got != "0000:65:00.0" {
+		t.Fatalf("normalized PCI address = %q", got)
+	}
+	if got := normalizePCIAddress("0000:65:00.0"); got != "0000:65:00.0" {
+		t.Fatalf("canonical PCI address changed = %q", got)
+	}
+}
+
 func TestWalkPCICapabilitiesBoundsMalformedChains(t *testing.T) {
 	data := make([]byte, 0x100)
 	data[0x06] = 0x10

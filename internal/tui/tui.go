@@ -30,6 +30,9 @@ type modelState struct {
 var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware"}
 
 func Run(collector *collect.Collector, interval time.Duration) error {
+	if interval < 500*time.Millisecond {
+		interval = 500 * time.Millisecond
+	}
 	_, err := tea.NewProgram(modelState{collector: collector, interval: interval}).Run()
 	return err
 }
@@ -57,7 +60,9 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		if len(m.history) > historyLimit {
 			m.history = m.history[len(m.history)-historyLimit:]
 		}
-		return m, tick(m.interval)
+		// The timer chain is owned by tickMsg. Scheduling another timer here
+		// would accumulate redraws when collection completes after a tick.
+		return m, nil
 	case tickMsg:
 		return m, tea.Batch(collectNow(m.collector), tick(m.interval))
 	}
@@ -100,8 +105,12 @@ func (m modelState) View() string {
 func fitView(content string, width, height int) string {
 	lines := strings.Split(content, "\n")
 	if height > 0 && len(lines) > height {
-		footer := lines[len(lines)-1]
-		lines = append(lines[:height-2], "… output truncated; switch tabs for detail", footer)
+		if height == 1 {
+			lines = lines[:1]
+		} else {
+			footer := lines[len(lines)-1]
+			lines = append(lines[:height-2], "… output truncated; switch tabs for detail", footer)
+		}
 	}
 	if width > 0 {
 		for i, line := range lines {
@@ -187,7 +196,7 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
-		fmt.Fprintf(b, "  %-16s %s:%s NVML %t\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVML)
+		fmt.Fprintf(b, "  %-16s %s:%s NVML %t  %s  memory %.1f/%.1f GiB  util %.1f%%  temp %.1fC  power %.1fW\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVML, gpu.NVMLStatus, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
 	}
 	b.WriteString("\nMemory devices\n")
 	for _, memory := range snapshot.MemoryDevices {

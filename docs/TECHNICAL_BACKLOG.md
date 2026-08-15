@@ -58,6 +58,9 @@ path could not be determined.
 
 ## M0.2.8 — hardware telemetry enrichment
 
+Status: core optional NVML enrichment implemented in `0.5.0`; ECC, MIG, NVLink,
+and Redfish inventory remain open.
+
 - Add optional dynamically loaded NVIDIA NVML collector.
 - Collect GPU UUID/name, framebuffer memory, utilization, temperature, power,
   ECC, MIG, NVLink, and PCI identity.

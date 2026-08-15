@@ -72,6 +72,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 	snapshot.PCI = append(snapshot.PCI, c.hardware.PCI...)
 	snapshot.MemoryDevices = append(snapshot.MemoryDevices, c.hardware.MemoryDevices...)
 	snapshot.GPUs = append(snapshot.GPUs, c.hardware.GPUs...)
+	collectGPUTelemetry(&snapshot)
 
 	if c.prev != nil {
 		seconds := now.Sub(c.prevAt).Seconds()

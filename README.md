@@ -46,17 +46,20 @@ For a root-only live smoke test that captures text and JSON output under `/tmp`:
 sudo ./scripts/live-collection-test.sh --duration 5s
 ```
 
-The current v1 focuses on core host bottlenecks. NVIDIA telemetry and deep PCIe
-analysis remain deferred; NIC link state, modes, FEC, driver identity, queues,
-and ring information are collected through read-only Linux interfaces.
+The current v1 focuses on core host bottlenecks. NVIDIA NVML telemetry and
+core PCIe topology analysis are available; deeper PCIe semantics, ECC/MIG/
+NVLink, and Redfish inventory remain deferred. NIC link state, modes, FEC,
+driver identity, queues, and ring information are collected through read-only
+Linux interfaces.
 
 Static PCIe, SMBIOS, EDAC, and GPU identity inventory is collected once per
 collector lifetime. Dynamic counters continue to refresh at the selected
-interval, keeping the monitor overhead low enough for one-second sampling.
+interval, keeping the monitor overhead low enough for the default two-second
+TUI refresh.
 
-Release version: `0.4.1`. Release builds can override it with:
+Release version: `0.5.0`. Release builds can override it with:
 
 ```sh
-go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.4.1 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
+go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.5.0 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
 ```
  

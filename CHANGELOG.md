@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0 — 2026-08-15
+
+- Added optional dynamically loaded NVIDIA NVML telemetry for GPU identity,
+  UUID, memory, utilization, temperature, and power.
+- NVML absence, initialization failure, and unmatched devices are reported as
+  availability status without failing collection or requiring NVIDIA libraries.
+- Reduced TUI redraw duplication, changed the default refresh interval to two
+  seconds, enforced a 500 ms minimum, and hardened tiny-terminal clipping.
+
 ## 0.4.1 — 2026-08-15
 
 - Added PF/VF relationship discovery from `physfn` and `virtfn*` sysfs links.

@@ -16,6 +16,6 @@ func init() {
 		}
 		return tui.Run(collect.New(), interval)
 	}}
-	command.Flags().DurationVar(&interval, "interval", time.Second, "refresh interval")
+	command.Flags().DurationVar(&interval, "interval", 2*time.Second, "refresh interval (minimum 500ms)")
 	rootCmd.AddCommand(command)
 }

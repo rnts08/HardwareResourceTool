@@ -11,6 +11,14 @@ import (
 	"hardware-resources-tool/internal/model"
 )
 
+func normalizePCIAddress(address string) string {
+	parts := strings.Split(strings.TrimSpace(address), ":")
+	if len(parts) == 3 && len(parts[0]) > 4 {
+		parts[0] = parts[0][len(parts[0])-4:]
+	}
+	return strings.Join(parts, ":")
+}
+
 func (c *Collector) collectHardware(s *model.Snapshot) error {
 	if err := c.collectPCI(s); err != nil {
 		return err
@@ -19,6 +27,35 @@ func (c *Collector) collectHardware(s *model.Snapshot) error {
 		return err
 	}
 	return nil
+}
+
+func collectGPUTelemetry(s *model.Snapshot) {
+	if len(s.GPUs) == 0 {
+		return
+	}
+	data, err := collectNVML()
+	if err != nil {
+		for i := range s.GPUs {
+			s.GPUs[i].NVMLStatus = err.Error()
+		}
+		return
+	}
+	for i := range s.GPUs {
+		for _, gpu := range data {
+			if normalizePCIAddress(gpu.BusID) != normalizePCIAddress(s.GPUs[i].Address) {
+				continue
+			}
+			s.GPUs[i].Name = gpu.Name
+			s.GPUs[i].UUID = gpu.UUID
+			s.GPUs[i].MemoryBytes = gpu.MemoryTotal
+			s.GPUs[i].MemoryUsedBytes = gpu.MemoryUsed
+			s.GPUs[i].UtilizationPercent = gpu.Utilization
+			s.GPUs[i].TemperatureCelsius = gpu.Temperature
+			s.GPUs[i].PowerWatts = gpu.PowerWatts
+			s.GPUs[i].NVML = true
+			s.GPUs[i].NVMLStatus = "available"
+		}
+	}
 }
 
 func (c *Collector) collectPCI(s *model.Snapshot) error {

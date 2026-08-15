@@ -54,3 +54,9 @@ func TestFitViewRespectsTerminalSize(t *testing.T) {
 		}
 	}
 }
+
+func TestFitViewHandlesTinyTerminal(t *testing.T) {
+	if got := fitView("one\ntwo", 20, 1); got != "one" {
+		t.Fatalf("tiny terminal view = %q", got)
+	}
+}

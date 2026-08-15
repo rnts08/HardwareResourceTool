@@ -58,6 +58,9 @@ func WriteText(w io.Writer, result model.Report) error {
 			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, BARs %d/%d bytes, PF %s, VFs %v, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, device.BARTotalBytes, device.PCIePFAddress, device.PCIeVFAddresses, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
 		}
 	}
+	for _, gpu := range result.Snapshot.GPUs {
+		fmt.Fprintf(w, "GPU: %s %s NVML %t status %s memory %.1f/%.1f GiB util %.1f%% temp %.1fC power %.1fW\n", gpu.Address, gpu.Name, gpu.NVML, gpu.NVMLStatus, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+	}
 	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
 	fmt.Fprintf(w, "Findings: %d\n", len(result.Findings))
 	for _, finding := range result.Findings {

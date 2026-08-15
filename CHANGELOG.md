@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.0 — 2026-08-15
+
+- Added read-only KVM/QEMU awareness from `/sys`, libvirt domain XML, and
+  `/proc` QEMU process metadata.
+- Added configured guest vCPU/memory totals, host overcommit ratios, running
+  QEMU process RSS, VM names/PIDs, and source attribution.
+- Added advisory findings when configured guest CPU or memory exceeds host
+  capacity.
+
 ## 0.5.2 — 2026-08-15
 
 - Filtered pseudo-filesystems such as `/proc`, `/sys`, cgroups, debugfs, and

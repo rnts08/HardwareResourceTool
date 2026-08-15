@@ -48,7 +48,7 @@ Reference: <https://docs.kernel.org/next/admin-guide/ras.html>
 ## NVIDIA GPUs
 
 NVIDIA display and 3D PCI functions (`vendor=0x10de`) are identified from the
-PCI inventory is enriched by an optional dynamically loaded NVML library:
+PCI inventory and enriched by an optional dynamically loaded NVML library:
 UUID, name, framebuffer memory, utilization, temperature, and power are read
 through NVML getters. NVML is never linked at build time and no `nvidia-smi`
 subprocess is used. Missing libraries, unavailable devices, and unsupported
@@ -71,6 +71,17 @@ coalescing, pause, RSS, timestamping, and detailed statistics remain in the
 technical backlog. No `SET` operation or external command is allowed.
 
 Reference: <https://cdn.kernel.org/doc/html/latest/networking/ethtool-netlink.html>
+
+## KVM/QEMU
+
+KVM availability is detected from the read-only `/sys/module/kvm` or
+`/dev/kvm` presence. Domain allocations come from readable libvirt XML under
+`/etc/libvirt/qemu`; when XML is unavailable, running QEMU command lines under
+`/proc` provide a fallback for VM name, vCPU, and memory arguments. QEMU
+process RSS is reported separately as host process usage. These values are not
+treated as guest actual usage: cgroup accounting, balloon state, NUMA pinning,
+and QMP metrics remain separate future work. No libvirt command, QMP command,
+or mutation is performed.
 
 ## Server vendors
 

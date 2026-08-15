@@ -17,6 +17,7 @@ import (
 type Collector struct {
 	procRoot      string
 	sysRoot       string
+	etcRoot       string
 	prev          *rawCounters
 	prevAt        time.Time
 	hardware      model.Snapshot
@@ -37,7 +38,7 @@ type diskCounter struct{ reads, sectorsRead, writes, sectorsWritten, inFlight ui
 type networkCounter struct{ rxBytes, txBytes, rxPackets, txPackets, rxErrors, txErrors, rxDrops, txDrops uint64 }
 
 func New() *Collector {
-	return &Collector{procRoot: "/proc", sysRoot: "/sys"}
+	return &Collector{procRoot: "/proc", sysRoot: "/sys", etcRoot: "/etc"}
 }
 
 func (c *Collector) Snapshot() model.Snapshot {
@@ -61,6 +62,9 @@ func (c *Collector) Snapshot() model.Snapshot {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if err := c.collectSystem(&snapshot, &current); err != nil {
+		snapshot.Errors = append(snapshot.Errors, err.Error())
+	}
+	if err := c.collectVirtualization(&snapshot); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if !c.hardwareReady {

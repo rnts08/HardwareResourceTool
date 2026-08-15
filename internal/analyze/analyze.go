@@ -85,6 +85,14 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			}
 		}
 	}
+	if s.Virtualization.QEMUDetected {
+		if s.Virtualization.VCPUOvercommitRatio > 1 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "Configured vCPUs exceed host logical CPUs", Evidence: fmt.Sprintf("%d allocated vCPUs over %d logical host CPUs (%.2fx)", s.Virtualization.AllocatedVCPUs, s.CPU.LogicalCPUs, s.Virtualization.VCPUOvercommitRatio), Recommendation: "Validate scheduler latency and workload demand before increasing vCPU allocation or placing additional guests on this host."})
+		}
+		if s.Virtualization.MemoryOvercommitRatio > 1 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "Configured guest memory exceeds host memory", Evidence: fmt.Sprintf("%.1f GiB allocated over %.1f GiB host memory (%.2fx)", float64(s.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), float64(s.Memory.TotalBytes)/(1024*1024*1024), s.Virtualization.MemoryOvercommitRatio), Recommendation: "Account for ballooning, paging, reservations, and host overhead before treating configured guest memory as physically available."})
+		}
+	}
 	if s.System.THP != "" && len(s.System.THP) > 0 && s.System.THP[0:1] != "[" {
 		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Transparent huge pages are not shown as active", Evidence: s.System.THP, Recommendation: "Review transparent huge page policy against the requirements of the virtualization platform."})
 	}

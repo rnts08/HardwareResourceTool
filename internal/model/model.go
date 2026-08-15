@@ -15,6 +15,7 @@ type Snapshot struct {
 	PCI                 []PCIDevice    `json:"pci_devices"`
 	MemoryDevices       []MemoryDevice `json:"memory_devices"`
 	GPUs                []GPU          `json:"gpus"`
+	Virtualization      Virtualization `json:"virtualization"`
 	NUMA                NUMA           `json:"numa"`
 	System              SystemSettings `json:"system"`
 	Errors              []string       `json:"collector_errors"`
@@ -146,6 +147,27 @@ type GPU struct {
 	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
 	NVMLStatus         string  `json:"nvml_status,omitempty"`
 	NVML               bool    `json:"nvml_available"`
+}
+
+type Virtualization struct {
+	KVMAvailable          bool             `json:"kvm_available"`
+	QEMUDetected          bool             `json:"qemu_detected"`
+	Hypervisor            string           `json:"hypervisor,omitempty"`
+	VirtualMachines       []VirtualMachine `json:"virtual_machines"`
+	AllocatedVCPUs        int64            `json:"allocated_vcpus"`
+	AllocatedMemoryBytes  uint64           `json:"allocated_memory_bytes"`
+	VCPUOvercommitRatio   float64          `json:"vcpu_overcommit_ratio,omitempty"`
+	MemoryOvercommitRatio float64          `json:"memory_overcommit_ratio,omitempty"`
+}
+
+type VirtualMachine struct {
+	Name                  string `json:"name"`
+	PID                   int    `json:"pid,omitempty"`
+	ConfiguredVCPUs       int64  `json:"configured_vcpus,omitempty"`
+	ConfiguredMemoryBytes uint64 `json:"configured_memory_bytes,omitempty"`
+	ProcessRSSBytes       uint64 `json:"process_rss_bytes,omitempty"`
+	Running               bool   `json:"running"`
+	Source                string `json:"source,omitempty"`
 }
 
 type MemoryDevice struct {

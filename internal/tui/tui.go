@@ -142,6 +142,9 @@ func viewOverview(b *strings.Builder, snapshot model.Snapshot, history []model.S
 	fmt.Fprintf(b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
 	fmt.Fprintf(b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
 	fmt.Fprintf(b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
+	if snapshot.Virtualization.QEMUDetected || snapshot.Virtualization.KVMAvailable || len(snapshot.Virtualization.VirtualMachines) > 0 {
+		fmt.Fprintf(b, "Virtualization  %s  VMs %d  allocated vCPU %d (%.2fx)  memory %s (%.2fx)\n", snapshot.Virtualization.Hypervisor, len(snapshot.Virtualization.VirtualMachines), snapshot.Virtualization.AllocatedVCPUs, snapshot.Virtualization.VCPUOvercommitRatio, formatBytes(snapshot.Virtualization.AllocatedMemoryBytes), snapshot.Virtualization.MemoryOvercommitRatio)
+	}
 	if len(snapshot.System.Sysctls) > 0 {
 		fmt.Fprintf(b, "        sysctls %v\n", snapshot.System.Sysctls)
 	}

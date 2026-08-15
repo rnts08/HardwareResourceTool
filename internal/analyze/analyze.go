@@ -64,6 +64,27 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "PCIe AER errors are present", Evidence: fmt.Sprintf("%s AER uncorrectable=0x%08x correctable=0x%08x", device.Address, device.AERUncorrectableStatus, device.AERCorrectableStatus), Recommendation: "Correlate AER status with kernel logs, slot/bridge health, power, cabling, and firmware before clearing counters."})
 		}
 	}
+	groups := map[string][]string{}
+	for _, device := range s.PCI {
+		if device.IOMMUGroup != "" {
+			groups[device.IOMMUGroup] = append(groups[device.IOMMUGroup], device.Address)
+		}
+	}
+	for group, addresses := range groups {
+		if len(addresses) > 1 {
+			findings = append(findings, model.Finding{Severity: "info", Category: "pcie", Title: "IOMMU group contains multiple PCI functions", Evidence: fmt.Sprintf("group %s contains %d functions: %v", group, len(addresses), addresses), Recommendation: "Review the complete IOMMU group before assigning or isolating one function for passthrough; all grouped functions may share isolation boundaries."})
+		}
+	}
+	for _, device := range s.PCI {
+		if device.PCIeParentAddress == "" || device.NUMANode < 0 {
+			continue
+		}
+		for _, parent := range s.PCI {
+			if parent.Address == device.PCIeParentAddress && parent.NUMANode >= 0 && parent.NUMANode != device.NUMANode {
+				findings = append(findings, model.Finding{Severity: "info", Category: "pcie", Title: "PCIe endpoint and upstream bridge use different NUMA nodes", Evidence: fmt.Sprintf("%s is NUMA %d; parent bridge %s is NUMA %d", device.Address, device.NUMANode, parent.Address, parent.NUMANode), Recommendation: "Validate workload placement and interrupt/CPU affinity when latency or PCIe traffic locality matters."})
+			}
+		}
+	}
 	if s.System.THP != "" && len(s.System.THP) > 0 && s.System.THP[0:1] != "[" {
 		findings = append(findings, model.Finding{Severity: "info", Category: "configuration", Title: "Transparent huge pages are not shown as active", Evidence: s.System.THP, Recommendation: "Review transparent huge page policy against the requirements of the virtualization platform."})
 	}

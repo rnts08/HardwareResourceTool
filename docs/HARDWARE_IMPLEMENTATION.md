@@ -22,6 +22,11 @@ the result unknown when a virtual or incomplete topology cannot be resolved.
 Analysis reports downgraded endpoint links, upstream path bottlenecks, and
 non-zero AER status conservatively.
 
+PF/VF relationships are read from `physfn` and `virtfn*`; resource windows are
+summarized from the read-only `resource` file, including aggregate BAR bytes
+and above-4G placement. IOMMU-group sharing and endpoint/bridge NUMA mismatch
+are reported as advisory conditions rather than automatic isolation failures.
+
 References:
 
 - Linux PCI sysfs: <https://docs.kernel.org/7.1/PCI/sysfs-pci.html>

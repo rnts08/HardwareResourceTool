@@ -1,6 +1,8 @@
 package collect
 
 import (
+	"bufio"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -23,6 +25,12 @@ func enrichPCITopology(paths []string, devices []model.PCIDevice) {
 			continue
 		}
 		device.PCIePath = pciParentPath(path)
+		if len(device.PCIePath) > 1 {
+			device.PCIeParentAddress = device.PCIePath[1]
+		}
+		device.PCIePFAddress = symlinkBase(filepath.Join(path, "physfn"))
+		device.PCIeVFAddresses = pciVirtualFunctions(path)
+		collectPCIResources(path, device)
 		for _, node := range device.PCIePath {
 			candidate := byAddress[node]
 			if candidate == nil {
@@ -38,6 +46,41 @@ func enrichPCITopology(paths []string, devices []model.PCIDevice) {
 				device.PCIePathMinWidth = candidate.PCIeNegotiatedWidth
 				device.PCIePathBottleneck = candidate.Address
 			}
+		}
+	}
+}
+
+func pciVirtualFunctions(path string) []string {
+	result := []string{}
+	for _, link := range glob(filepath.Join(path, "virtfn*")) {
+		if address := symlinkBase(link); pciAddressPattern.MatchString(address) {
+			result = append(result, address)
+		}
+	}
+	return result
+}
+
+func collectPCIResources(path string, device *model.PCIDevice) {
+	file, err := os.Open(filepath.Join(path, "resource"))
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 2 {
+			continue
+		}
+		start, startErr := strconv.ParseUint(strings.TrimPrefix(fields[0], "0x"), 16, 64)
+		end, endErr := strconv.ParseUint(strings.TrimPrefix(fields[1], "0x"), 16, 64)
+		if startErr != nil || endErr != nil || end < start || (start == 0 && end == 0) {
+			continue
+		}
+		device.BARCount++
+		device.BARTotalBytes += end - start + 1
+		if start > uint64(^uint32(0)) || end > uint64(^uint32(0)) {
+			device.BARAbove4G = true
 		}
 	}
 }

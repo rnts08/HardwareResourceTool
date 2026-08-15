@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-08-15
+
+- Added PF/VF relationship discovery from `physfn` and `virtfn*` sysfs links.
+- Added PCI BAR count, aggregate size, above-4G detection, and report/TUI output.
+- Added IOMMU-group sharing and endpoint/bridge NUMA locality findings.
+
 ## 0.4.0 — 2026-08-15
 
 - Added PCIe endpoint-to-bridge path discovery from resolved sysfs links.

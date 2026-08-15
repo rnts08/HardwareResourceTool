@@ -55,7 +55,7 @@ func WriteText(w io.Writer, result model.Report) error {
 	}
 	for _, device := range result.Snapshot.PCI {
 		if len(device.Capabilities) > 0 || device.AERUncorrectableStatus != 0 || device.AERCorrectableStatus != 0 || device.PCIePathBottleneck != "" {
-			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
+			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, BARs %d/%d bytes, PF %s, VFs %v, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, device.BARTotalBytes, device.PCIePFAddress, device.PCIeVFAddresses, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
 		}
 	}
 	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))

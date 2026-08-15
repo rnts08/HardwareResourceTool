@@ -183,7 +183,7 @@ func viewFindings(b *strings.Builder, findings []model.Finding) {
 func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	b.WriteString("PCIe devices\n")
 	for _, device := range snapshot.PCI {
-		fmt.Fprintf(b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, strings.Join(device.Capabilities, ","), device.Driver)
+		fmt.Fprintf(b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), strings.Join(device.Capabilities, ","), device.Driver)
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {

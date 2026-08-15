@@ -41,9 +41,8 @@ never trust malformed offsets.
 
 ## M0.2.7 — PCIe topology and bandwidth analysis
 
-Status: core path and bandwidth analysis implemented in `0.4.0`; PF/VF
-relationship enrichment, BAR/resource reasoning, and broader NUMA/isolation
-findings remain follow-up work.
+Status: implemented in `0.4.0` and `0.4.1`; deeper BAR/resource semantics and
+broader NUMA/isolation findings remain follow-up work.
 
 - Build parent-bridge chains and PF/VF relationships from sysfs.
 - Convert PCIe generations/encoding to comparable raw bandwidth.

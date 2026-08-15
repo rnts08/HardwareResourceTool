@@ -118,6 +118,12 @@ type PCIDevice struct {
 	PCIePathMinWidth        int64    `json:"pcie_path_min_width,omitempty"`
 	PCIePathBandwidthGbps   float64  `json:"pcie_path_bandwidth_gbps,omitempty"`
 	PCIePathBottleneck      string   `json:"pcie_path_bottleneck,omitempty"`
+	PCIeParentAddress       string   `json:"pcie_parent_address,omitempty"`
+	PCIePFAddress           string   `json:"pcie_pf_address,omitempty"`
+	PCIeVFAddresses         []string `json:"pcie_vf_addresses,omitempty"`
+	BARTotalBytes           uint64   `json:"bar_total_bytes,omitempty"`
+	BARCount                int64    `json:"bar_count,omitempty"`
+	BARAbove4G              bool     `json:"bar_above_4g,omitempty"`
 	AERUncorrectableStatus  uint32   `json:"aer_uncorrectable_status,omitempty"`
 	AERCorrectableStatus    uint32   `json:"aer_correctable_status,omitempty"`
 	SRIOVTotalVFs           int64    `json:"sriov_total_vfs,omitempty"`

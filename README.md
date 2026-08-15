@@ -36,9 +36,14 @@ The implementation uses Go, direct reads from `/proc` and `/sys`, Cobra for the 
 Build and test:
 
 ```sh
-go build -o hardware-resources ./cmd/hardware-resources
-go test ./...
+make linux
+make check
 ```
+
+`make linux` builds with NVML dynamic loading enabled, embeds version/build
+metadata, applies `-trimpath -s -w`, and strips the resulting Linux amd64
+binary. Use `make help` for build, install, coverage, live-test, and cleanup
+targets. Set `VERSION`, `PREFIX`, or `DESTDIR` to override defaults.
 
 For a root-only live smoke test that captures text and JSON output under `/tmp`:
 
@@ -57,9 +62,9 @@ collector lifetime. Dynamic counters continue to refresh at the selected
 interval, keeping the monitor overhead low enough for the default two-second
 TUI refresh.
 
-Release version: `0.5.0`. Release builds can override it with:
+Release version: `0.5.1`. Release builds can override it with:
 
 ```sh
-go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.5.0 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
+make linux VERSION=0.5.1
 ```
  

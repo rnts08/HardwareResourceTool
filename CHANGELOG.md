@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1 — 2026-08-15
+
+- Added a Makefile for stripped Linux builds, testing, vetting, formatting,
+  coverage, installation, live validation, and cleanup.
+- Updated the documented release workflow to preserve optional NVML loading.
+
 ## 0.5.0 — 2026-08-15
 
 - Added optional dynamically loaded NVIDIA NVML telemetry for GPU identity,

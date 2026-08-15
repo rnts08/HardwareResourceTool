@@ -7,3 +7,4 @@ WORKFILE.md
 
 # Test and coverage output.
 coverage.out
+coverage.html

@@ -1,8 +1,10 @@
 package collect
 
 import (
+	"encoding/binary"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"hardware-resources-tool/internal/model"
@@ -130,12 +132,44 @@ func TestCollectPCIAndNVIDIAIdentity(t *testing.T) {
 	writeFixture(t, device, "numa_node", "1\n")
 	writeFixture(t, device, "current_link_speed", "16.0 GT/s PCIe\n")
 	writeFixture(t, device, "current_link_width", "16\n")
+	config := make([]byte, 0x120)
+	config[0x06] = 0x10 // capabilities list present
+	config[0x34] = 0x40
+	config[0x40] = 0x10 // PCI Express
+	config[0x41] = 0x00
+	config[0x44] = 0x02                                            // max payload: 512 bytes
+	config[0x45] = 0x20                                            // max read request: 512 bytes
+	binary.LittleEndian.PutUint32(config[0x100:0x104], 0x00000001) // AER
+	binary.LittleEndian.PutUint32(config[0x104:0x108], 0x00000004)
+	binary.LittleEndian.PutUint32(config[0x110:0x114], 0x00000008)
+	writeFixtureBytes(t, device, "config", config)
 	snapshot := model.Snapshot{PCI: []model.PCIDevice{}, GPUs: []model.GPU{}}
 	if err := (&Collector{sysRoot: sys}).collectPCI(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if len(snapshot.PCI) != 1 || len(snapshot.GPUs) != 1 || snapshot.GPUs[0].Address != "0000:01:00.0" {
 		t.Fatalf("unexpected PCI/GPU inventory: %#v %#v", snapshot.PCI, snapshot.GPUs)
+	}
+	deviceInfo := snapshot.PCI[0]
+	if !reflect.DeepEqual(deviceInfo.Capabilities, []string{"pcie", "aer"}) || deviceInfo.PCIeMaxPayloadBytes != 512 || deviceInfo.PCIeMaxReadRequestBytes != 512 || deviceInfo.AERUncorrectableStatus != 4 || deviceInfo.AERCorrectableStatus != 8 {
+		t.Fatalf("unexpected PCI capabilities: %#v", deviceInfo)
+	}
+}
+
+func TestWalkPCICapabilitiesBoundsMalformedChains(t *testing.T) {
+	data := make([]byte, 0x100)
+	data[0x06] = 0x10
+	data[0x34] = 0x40
+	data[0x40] = 0x10
+	data[0x41] = 0x40 // self-loop must terminate
+	if got := walkPCICapabilities(data); len(got) != 1 || got[0].offset != 0x40 {
+		t.Fatalf("self-loop capabilities = %#v", got)
+	}
+
+	truncated := make([]byte, 0x104)
+	binary.LittleEndian.PutUint32(truncated[0x100:], 0x00000001)
+	if got := walkPCICapabilities(truncated); len(got) != 1 || !got[0].extended {
+		t.Fatalf("truncated extended capabilities = %#v", got)
 	}
 }
 
@@ -145,6 +179,16 @@ func writeFixture(t *testing.T, dir, name, content string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFixtureBytes(t *testing.T, dir, name string, content []byte) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, name), content, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

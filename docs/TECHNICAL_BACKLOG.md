@@ -28,6 +28,8 @@ no external `ethtool` process is executed; virtual interfaces remain valid.
 
 ## M0.2.6 — PCI configuration and capability parser
 
+Status: implemented in `0.3.0`; topology and bandwidth reasoning remains M0.2.7.
+
 - Read PCI config space read-only from `/sys/bus/pci/devices/<addr>/config`.
 - Walk standard and extended capability linked lists with bounds checking.
 - Decode PCIe device/link/slot/root capability and status registers.

@@ -42,6 +42,7 @@ func (c *Collector) collectPCI(s *model.Snapshot) error {
 		d.CurrentLinkWidth, _ = readSysInt(filepath.Join(path, "current_link_width"))
 		d.MaxLinkWidth, _ = readSysInt(filepath.Join(path, "max_link_width"))
 		d.NUMANode, _ = readSysInt(filepath.Join(path, "numa_node"))
+		enrichPCICapabilities(path, &d)
 		s.PCI = append(s.PCI, d)
 		if strings.EqualFold(vendor, "0x10de") && (strings.HasPrefix(class, "0x03") || strings.HasPrefix(class, "0x12")) {
 			s.GPUs = append(s.GPUs, model.GPU{Address: address, VendorID: vendor, DeviceID: device})

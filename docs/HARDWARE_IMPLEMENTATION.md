@@ -7,8 +7,10 @@ requirement for a valid report.
 ## PCIe and CPU topology
 
 `/sys/bus/pci/devices/*` provides the observed PCI function inventory and
-current/max link speed and width. The collector also records vendor/device IDs,
-driver, NUMA node, and IOMMU group. PCIe lane counts advertised by Intel Xeon
+current/max link speed and width. The collector also reads PCI config space to
+walk standard and extended capabilities, including PCIe payload limits, AER,
+ACS, ARI, SR-IOV, Resizable BAR, DPC, L1SS, and DOE presence. It records
+vendor/device IDs, driver, NUMA node, and IOMMU group. PCIe lane counts advertised by Intel Xeon
 or AMD EPYC product documentation are reference capabilities only; actual
 platform wiring, bifurcation, socket count, and CXL usage determine the
 observed link topology.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — 2026-08-15
+
+- Added bounded PCI standard and extended capability parsing from read-only
+  sysfs config space.
+- Added PCIe payload/read-request limits, capability presence, AER status,
+  SR-IOV VF count, and Resizable BAR metadata to reports and the TUI.
+- Added malformed and truncated capability-chain fixture coverage.
+
 ## 0.2.5 — 2026-08-15
 
 - Added a read-only Linux ethtool generic-netlink session per collection.

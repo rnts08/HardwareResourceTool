@@ -95,17 +95,24 @@ type Filesystem struct {
 }
 
 type PCIDevice struct {
-	Address          string `json:"address"`
-	VendorID         string `json:"vendor_id"`
-	DeviceID         string `json:"device_id"`
-	Class            string `json:"class"`
-	Driver           string `json:"driver,omitempty"`
-	NUMANode         int64  `json:"numa_node"`
-	IOMMUGroup       string `json:"iommu_group,omitempty"`
-	CurrentLinkSpeed string `json:"current_link_speed,omitempty"`
-	CurrentLinkWidth int64  `json:"current_link_width,omitempty"`
-	MaxLinkSpeed     string `json:"max_link_speed,omitempty"`
-	MaxLinkWidth     int64  `json:"max_link_width,omitempty"`
+	Address                 string   `json:"address"`
+	VendorID                string   `json:"vendor_id"`
+	DeviceID                string   `json:"device_id"`
+	Class                   string   `json:"class"`
+	Driver                  string   `json:"driver,omitempty"`
+	NUMANode                int64    `json:"numa_node"`
+	IOMMUGroup              string   `json:"iommu_group,omitempty"`
+	CurrentLinkSpeed        string   `json:"current_link_speed,omitempty"`
+	CurrentLinkWidth        int64    `json:"current_link_width,omitempty"`
+	MaxLinkSpeed            string   `json:"max_link_speed,omitempty"`
+	MaxLinkWidth            int64    `json:"max_link_width,omitempty"`
+	Capabilities            []string `json:"capabilities,omitempty"`
+	PCIeMaxPayloadBytes     int64    `json:"pcie_max_payload_bytes,omitempty"`
+	PCIeMaxReadRequestBytes int64    `json:"pcie_max_read_request_bytes,omitempty"`
+	AERUncorrectableStatus  uint32   `json:"aer_uncorrectable_status,omitempty"`
+	AERCorrectableStatus    uint32   `json:"aer_correctable_status,omitempty"`
+	SRIOVTotalVFs           int64    `json:"sriov_total_vfs,omitempty"`
+	ResizableBAR            bool     `json:"resizable_bar,omitempty"`
 }
 
 type GPU struct {

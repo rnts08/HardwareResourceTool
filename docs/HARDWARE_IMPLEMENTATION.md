@@ -42,10 +42,13 @@ Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 
 ## NICs
 
-The base collector uses `/sys/class/net` and read-only ethtool ioctl data for
-link identity, queues, and ring sizes. A future netlink adapter should use only
-the ethtool `*_GET` operations for link modes, features, channels, coalescing,
-pause, FEC, and statistics. No `SET` operation or external command is allowed.
+The base collector uses `/sys/class/net`, read-only ethtool ioctl data for ring
+sizes, and the Linux ethtool generic-netlink `*_GET` operations for link state,
+duplex/autonegotiation, interface/peer link modes, and FEC. Driver identity is
+read from the PCI sysfs driver link. Unsupported virtual devices retain an
+error string instead of failing the snapshot. Feature bitsets, channels,
+coalescing, pause, RSS, timestamping, and detailed statistics remain in the
+technical backlog. No `SET` operation or external command is allowed.
 
 Reference: <https://cdn.kernel.org/doc/html/latest/networking/ethtool-netlink.html>
 

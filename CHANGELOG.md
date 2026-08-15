@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.5 — 2026-08-15
+
+- Added a read-only Linux ethtool generic-netlink session per collection.
+- Added NIC driver, link state, duplex, autonegotiation, link modes, peer modes,
+  and FEC fields to JSON, text, and TUI output.
+- Preserved unsupported-device ethtool errors without failing collection.
+- Added the ordered technical backlog for remaining NIC, PCIe, and telemetry work.
+
 ## 0.2.4 — 2026-08-15
 
 - Cached static PCIe, SMBIOS, EDAC, and NVIDIA identity inventory after the first sample.

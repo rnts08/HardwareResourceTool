@@ -54,24 +54,34 @@ type Disk struct {
 }
 
 type Network struct {
-	Name          string  `json:"name"`
-	State         string  `json:"state"`
-	RXBytes       uint64  `json:"rx_bytes"`
-	TXBytes       uint64  `json:"tx_bytes"`
-	RXBytesPerSec float64 `json:"rx_bytes_per_second"`
-	TXBytesPerSec float64 `json:"tx_bytes_per_second"`
-	RXPackets     int64   `json:"rx_packets"`
-	TXPackets     int64   `json:"tx_packets"`
-	RXErrors      int64   `json:"rx_errors"`
-	TXErrors      int64   `json:"tx_errors"`
-	RXDrops       int64   `json:"rx_drops"`
-	TXDrops       int64   `json:"tx_drops"`
-	LinkSpeedMbps int64   `json:"link_speed_mbps,omitempty"`
-	MTU           int64   `json:"mtu,omitempty"`
-	RXQueues      int64   `json:"rx_queues,omitempty"`
-	TXQueues      int64   `json:"tx_queues,omitempty"`
-	RXRingSize    int64   `json:"rx_ring_size,omitempty"`
-	TXRingSize    int64   `json:"tx_ring_size,omitempty"`
+	Name                string   `json:"name"`
+	State               string   `json:"state"`
+	RXBytes             uint64   `json:"rx_bytes"`
+	TXBytes             uint64   `json:"tx_bytes"`
+	RXBytesPerSec       float64  `json:"rx_bytes_per_second"`
+	TXBytesPerSec       float64  `json:"tx_bytes_per_second"`
+	RXPackets           int64    `json:"rx_packets"`
+	TXPackets           int64    `json:"tx_packets"`
+	RXErrors            int64    `json:"rx_errors"`
+	TXErrors            int64    `json:"tx_errors"`
+	RXDrops             int64    `json:"rx_drops"`
+	TXDrops             int64    `json:"tx_drops"`
+	LinkSpeedMbps       int64    `json:"link_speed_mbps,omitempty"`
+	MTU                 int64    `json:"mtu,omitempty"`
+	RXQueues            int64    `json:"rx_queues,omitempty"`
+	TXQueues            int64    `json:"tx_queues,omitempty"`
+	RXRingSize          int64    `json:"rx_ring_size,omitempty"`
+	TXRingSize          int64    `json:"tx_ring_size,omitempty"`
+	Driver              string   `json:"driver,omitempty"`
+	LinkDuplex          string   `json:"link_duplex,omitempty"`
+	AutoNegotiation     string   `json:"autonegotiation,omitempty"`
+	LinkUp              bool     `json:"link_up,omitempty"`
+	SupportedLinkModes  []string `json:"supported_link_modes,omitempty"`
+	AdvertisedLinkModes []string `json:"advertised_link_modes,omitempty"`
+	PeerLinkModes       []string `json:"peer_link_modes,omitempty"`
+	FECActive           string   `json:"fec_active,omitempty"`
+	FECSupported        string   `json:"fec_supported,omitempty"`
+	EthtoolError        string   `json:"ethtool_error,omitempty"`
 }
 
 type Filesystem struct {

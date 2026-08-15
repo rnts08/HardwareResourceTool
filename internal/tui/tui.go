@@ -163,6 +163,9 @@ func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
 	}
 	for _, network := range snapshot.Networks {
 		fmt.Fprintf(b, "  %-16s %-8s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		if network.Driver != "" || network.LinkDuplex != "" || network.FECActive != "" {
+			fmt.Fprintf(b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes))
+		}
 	}
 }
 

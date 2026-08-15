@@ -48,9 +48,13 @@ sudo ./scripts/live-collection-test.sh --duration 5s
 
 The current v1 focuses on core host bottlenecks. GPU, deep PCIe analysis, and automatic tuning are intentionally deferred.
 
-Release version: `0.2.3`. Release builds can override it with:
+Static PCIe, SMBIOS, EDAC, and GPU identity inventory is collected once per
+collector lifetime. Dynamic counters continue to refresh at the selected
+interval, keeping the monitor overhead low enough for one-second sampling.
+
+Release version: `0.2.4`. Release builds can override it with:
 
 ```sh
-go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.2.3 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
+go build -ldflags "-X hardware-resources-tool/internal/cli.version=0.2.4 -X hardware-resources-tool/internal/cli.buildCommit=$(git rev-parse --short HEAD) -X hardware-resources-tool/internal/cli.buildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o hardware-resources ./cmd/hardware-resources
 ```
  

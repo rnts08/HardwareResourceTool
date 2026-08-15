@@ -15,10 +15,12 @@ import (
 )
 
 type Collector struct {
-	procRoot string
-	sysRoot  string
-	prev     *rawCounters
-	prevAt   time.Time
+	procRoot      string
+	sysRoot       string
+	prev          *rawCounters
+	prevAt        time.Time
+	hardware      model.Snapshot
+	hardwareReady bool
 }
 
 type rawCounters struct {
@@ -61,9 +63,15 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectSystem(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectHardware(&snapshot); err != nil {
-		snapshot.Errors = append(snapshot.Errors, err.Error())
+	if !c.hardwareReady {
+		if err := c.collectHardware(&c.hardware); err != nil {
+			snapshot.Errors = append(snapshot.Errors, err.Error())
+		}
+		c.hardwareReady = true
 	}
+	snapshot.PCI = append(snapshot.PCI, c.hardware.PCI...)
+	snapshot.MemoryDevices = append(snapshot.MemoryDevices, c.hardware.MemoryDevices...)
+	snapshot.GPUs = append(snapshot.GPUs, c.hardware.GPUs...)
 
 	if c.prev != nil {
 		seconds := now.Sub(c.prevAt).Seconds()

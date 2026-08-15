@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.4 — 2026-08-15
+
+- Cached static PCIe, SMBIOS, EDAC, and NVIDIA identity inventory after the first sample.
+- Reduced measured snapshot overhead from 16–27 ms to approximately 4.4 ms on the Linux validation host.
+
 ## 0.2.3 — 2026-08-15
 
 - Added PCIe device topology and current/max link information.

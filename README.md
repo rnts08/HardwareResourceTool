@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.0` (`v0.10.0`). It is focused on Linux hosts,
+The current release is `0.10.1` (`v0.10.1`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -98,7 +98,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.10.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.10.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -179,6 +179,38 @@ It creates `metadata.txt`, `summary.txt`, `check.txt`, `report.txt`, and
 `report.json`. It prints the result directory, for example
 `/tmp/hardware-resources-live.XXXXXX`. The helper is diagnostic only; it does
 not install the binary or alter the host.
+
+## Run it now on a Linux host
+
+From the repository root, the recommended first capture is:
+
+```sh
+make linux
+sudo ./hardware-resources-linux-amd64 check
+sudo ./hardware-resources-linux-amd64 report --duration 10s
+sudo ./hardware-resources-linux-amd64 report --json --duration 10s > /tmp/hardware-resources-report.json
+```
+
+For a complete repeatable capture, use the helper and save the directory it
+prints:
+
+```sh
+./scripts/live-collection-test.sh --duration 10s
+```
+
+Inspect the most useful new telemetry with jq:
+
+```sh
+jq '.findings' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
+```
+
+Replace `XXXXXX` with the actual directory printed by the script. Without
+root, the program intentionally exits instead of returning a partial report.
+Missing optional NVML, QMP, cgroup, or ethtool features appear as unavailable
+fields or collector errors rather than synthetic zero values.
 
 ## Output choices
 

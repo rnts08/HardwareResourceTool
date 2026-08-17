@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.10.1 — 2026-08-17
+
+- Added first-run Linux capture instructions and JSON inspection examples to
+  the README and user manual.
+
 ## 0.10.0 — 2026-08-17
 
 - Added read-only ethtool channel, pause, hardware timestamping/PHC, and

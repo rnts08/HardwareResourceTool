@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.0. Hardware Resources Tool is a read-only
+This manual describes release 0.10.1. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -73,6 +73,33 @@ summary.txt, check.txt, report.txt, and report.json under a printed
 /tmp/hardware-resources-live.* directory:
 
     ./scripts/live-collection-test.sh --duration 5s
+
+### First live validation capture
+
+For the first host run, use a ten-second interval so rates are stable:
+
+    make linux
+    sudo ./hardware-resources-linux-amd64 check
+    sudo ./hardware-resources-linux-amd64 report --duration 10s
+    sudo ./hardware-resources-linux-amd64 report --json --duration 10s > /tmp/hardware-resources-report.json
+
+The repeatable helper is preferable when results will be shared:
+
+    ./scripts/live-collection-test.sh --duration 10s
+
+It prints a directory such as /tmp/hardware-resources-live.ABC123. Review
+summary.txt first, then report.txt for readable output and report.json for all
+fields. Useful checks are:
+
+    jq '.findings' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
+
+Replace ABC123 with the actual directory name. If a field is absent, check
+collector_errors and the corresponding availability/status fields. A missing
+NVML library, QMP socket, cgroup file, or unsupported ethtool GET operation is
+an expected capability difference, not automatically a fault.
 
 ## 3. Commands and flags
 

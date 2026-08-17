@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.2. Hardware Resources Tool is a read-only
+This manual describes release 0.10.3. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.2 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.3 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -221,11 +221,11 @@ capabilities. The path is the resolved upstream PCIe chain where sysfs makes
 it available.
 
 NVIDIA rows always show PCI identity when discovered. With NVML, they add name,
-framebuffer used/total, utilization, temperature, and power. If NVML is
+framebuffer used/total, process-accounted framebuffer memory, utilization, temperature, and power. If NVML is
 missing or cannot initialize, the GPU remains visible with an explicit status;
 zero values do not mean zero GPU load.
 
-KVM/QEMU rows show running state, configured vCPUs, process/cgroup CPU,
+KVM/QEMU rows show VMID where available, running state, configured vCPUs, process/cgroup CPU,
 configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
 memory, and NUMA nodes. Memory-device rows show locator, size, type, speed,
 configured speed, and EDAC corrected/uncorrected errors where available.
@@ -305,7 +305,7 @@ addresses, PF/VF relationships, BAR totals/count/above-4G, AER statuses,
 SR-IOV total VFs, and Resizable BAR presence.
 
 gpus entries include PCI identity plus name, uuid, framebuffer total/used,
-utilization, temperature, power, ECC enabled/corrected/uncorrected counts,
+process-accounted framebuffer bytes and memory_source, utilization, temperature, power, ECC enabled/corrected/uncorrected counts,
 MIG mode and maximum-instance information, nvml_available, and nvml_status. PCI
 discovery is independent of NVML runtime telemetry.
 
@@ -316,7 +316,7 @@ virtual_machines, allocated_vcpus, allocated_memory_bytes,
 vcpu_overcommit_ratio, and memory_overcommit_ratio. A ratio above 1 is
 configured overcommit, not proof of failure.
 
-Each virtual_machines entry contains name, pid, source, running, configured
+Each virtual_machines entry contains name, vmid where available, pid, source, running, configured
 vCPUs/memory, process and cgroup CPU, process RSS, cgroup current/max/path and
 availability, process/cgroup I/O, hugepages and hugepage_bytes, runtime
 anonymous hugepage and hugetlb bytes, per-node runtime numa_maps bytes, parsed

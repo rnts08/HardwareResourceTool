@@ -154,6 +154,8 @@ type GPU struct {
 	TemperatureCelsius float64 `json:"temperature_celsius,omitempty"`
 	PowerWatts         float64 `json:"power_watts,omitempty"`
 	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
+	MemoryProcessBytes uint64  `json:"memory_process_bytes,omitempty"`
+	MemorySource       string  `json:"memory_source,omitempty"`
 	ECCEnabled         bool    `json:"ecc_enabled,omitempty"`
 	ECCCorrected       uint64  `json:"ecc_corrected,omitempty"`
 	ECCUncorrected     uint64  `json:"ecc_uncorrected,omitempty"`
@@ -176,6 +178,7 @@ type Virtualization struct {
 
 type VirtualMachine struct {
 	Name                  string         `json:"name"`
+	VMID                  string         `json:"vmid,omitempty"`
 	PID                   int            `json:"pid,omitempty"`
 	ConfiguredVCPUs       int64          `json:"configured_vcpus,omitempty"`
 	ConfiguredMemoryBytes uint64         `json:"configured_memory_bytes,omitempty"`

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.10.3 — 2026-08-17
+
+- Added read-only Proxmox VE VM configuration discovery from
+  `/etc/pve/qemu-server/*.conf`, including VMID, configured vCPU count,
+  maximum memory, and balloon minimum memory.
+- Correlated Proxmox VM configuration rows with running QEMU processes by VMID
+  so stopped and running guests contribute consistently to allocation totals.
+- Added NVML running-process framebuffer accounting and use it as a validated
+  fallback when device-wide memory accounting is incomplete, with the source
+  and process total exposed in JSON/text/TUI output.
+- Added Proxmox allocation fixture coverage and updated field documentation.
+
 ## 0.10.2 — 2026-08-17
 
 - Restricted filesystem capacity reporting to physical non-USB block-backed

@@ -39,6 +39,7 @@ type memoryXML struct {
 
 type qemuProcess struct {
 	Name          string
+	VMID          string
 	PID           int
 	VCPU          int64
 	Memory        uint64
@@ -109,6 +110,14 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 	if root == "" {
 		root = "/etc"
 	}
+	proxmoxVMs := discoverProxmoxVMs(root)
+	for _, vm := range proxmoxVMs {
+		virt.VirtualMachines = append(virt.VirtualMachines, vm)
+	}
+	if len(proxmoxVMs) > 0 {
+		virt.Hypervisor = "kvm/proxmox"
+	}
+	libvirtVMs := 0
 	for _, path := range glob(filepath.Join(root, "libvirt/qemu/*.xml")) {
 		data, err := os.ReadFile(path)
 		if err != nil {
@@ -154,8 +163,9 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 		}
 		vm.BalloonEnabled = len(domain.Devices.Memballoons) > 0
 		virt.VirtualMachines = append(virt.VirtualMachines, vm)
+		libvirtVMs++
 	}
-	if len(virt.VirtualMachines) > 0 {
+	if libvirtVMs > 0 {
 		virt.Hypervisor = "kvm/libvirt"
 	}
 	processes, err := discoverQEMUProcesses(c.procRoot)
@@ -169,8 +179,11 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 	for _, process := range processes {
 		matched := false
 		for i := range virt.VirtualMachines {
-			if virt.VirtualMachines[i].Name == process.Name {
+			if (process.VMID != "" && virt.VirtualMachines[i].VMID == process.VMID) || virt.VirtualMachines[i].Name == process.Name {
 				virt.VirtualMachines[i].PID = process.PID
+				if virt.VirtualMachines[i].Name == "" || strings.HasPrefix(virt.VirtualMachines[i].Name, "vm-") {
+					virt.VirtualMachines[i].Name = process.Name
+				}
 				virt.VirtualMachines[i].ProcessRSSBytes = process.RSS
 				virt.VirtualMachines[i].Running = true
 				virt.VirtualMachines[i].CPUPercent = processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs)
@@ -184,7 +197,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 		}
 		if !matched {
 			current, maximum, cgroupPath, cgroupAvailable := readQEMUCgroup(c.procRoot, c.sysRoot, process.PID)
-			vm := model.VirtualMachine{Name: process.Name, PID: process.PID, ConfiguredVCPUs: process.VCPU, ConfiguredMemoryBytes: process.Memory, ProcessRSSBytes: process.RSS, CPUPercent: processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs), ReadBytes: process.ReadBytes, WriteBytes: process.WriteBytes, Running: true, Source: "qemu-process", MemoryCurrentBytes: current, MemoryMaxBytes: maximum, CgroupPath: cgroupPath, CgroupAvailable: cgroupAvailable}
+			vm := model.VirtualMachine{Name: process.Name, VMID: process.VMID, PID: process.PID, ConfiguredVCPUs: process.VCPU, ConfiguredMemoryBytes: process.Memory, ProcessRSSBytes: process.RSS, CPUPercent: processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs), ReadBytes: process.ReadBytes, WriteBytes: process.WriteBytes, Running: true, Source: "qemu-process", MemoryCurrentBytes: current, MemoryMaxBytes: maximum, CgroupPath: cgroupPath, CgroupAvailable: cgroupAvailable}
 			applyQMP(&vm, process.QMPPath)
 			virt.VirtualMachines = append(virt.VirtualMachines, vm)
 		}
@@ -338,7 +351,7 @@ func discoverQEMUProcesses(procRoot string) ([]qemuProcess, error) {
 		if len(fields) == 0 || !isQEMUExecutable(fields[0]) {
 			continue
 		}
-		process := qemuProcess{PID: pid, Name: strings.Split(qemuArgument(fields, "-name"), ",")[0], VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields), QMPPath: parseQMPPath(qemuArgument(fields, "-qmp"))}
+		process := qemuProcess{PID: pid, VMID: qemuArgument(fields, "-id"), Name: strings.Split(qemuArgument(fields, "-name"), ",")[0], VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields), QMPPath: parseQMPPath(qemuArgument(fields, "-qmp"))}
 		if process.Name == "" {
 			process.Name = fmt.Sprintf("qemu-%d", pid)
 		}
@@ -358,6 +371,84 @@ func discoverQEMUProcesses(procRoot string) ([]qemuProcess, error) {
 		result = append(result, process)
 	}
 	return result, nil
+}
+
+func discoverProxmoxVMs(etcRoot string) []model.VirtualMachine {
+	result := []model.VirtualMachine{}
+	for _, path := range glob(filepath.Join(etcRoot, "pve/qemu-server/*.conf")) {
+		vmid := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		if _, err := strconv.Atoi(vmid); err != nil {
+			continue
+		}
+		values := map[string]string{}
+		for _, line := range mustReadLines(path) {
+			line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
+			parts := strings.SplitN(line, ":", 2)
+			if len(parts) == 2 {
+				values[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+		name := values["name"]
+		if name == "" {
+			name = "vm-" + vmid
+		}
+		cores := parseConfigInt(values["cores"], 1)
+		sockets := parseConfigInt(values["sockets"], 1)
+		vcpus := parseConfigInt(values["vcpus"], cores*sockets)
+		memory := parseConfigMemory(values["memory"])
+		balloon := parseConfigMemory(values["balloon"])
+		vm := model.VirtualMachine{Name: name, VMID: vmid, ConfiguredVCPUs: vcpus, ConfiguredMemoryBytes: memory, Source: "proxmox", Disks: []model.VirtualDisk{}, NICs: []model.VirtualNIC{}, PCIAddresses: []string{}}
+		if value, ok := values["balloon"]; ok && strings.TrimSpace(value) != "0" {
+			vm.BalloonEnabled = true
+			vm.BalloonTargetBytes = balloon
+		}
+		result = append(result, vm)
+	}
+	return result
+}
+
+func mustReadLines(path string) []string {
+	lines, err := readLines(path)
+	if err != nil {
+		return nil
+	}
+	return lines
+}
+
+func parseConfigInt(value string, fallback int64) int64 {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || parsed < 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func parseConfigMemory(value string) uint64 {
+	if value == "" {
+		return 0
+	}
+	fields := strings.Fields(strings.ToLower(value))
+	if len(fields) == 0 {
+		return 0
+	}
+	amount, err := strconv.ParseUint(fields[0], 10, 64)
+	if err != nil {
+		return 0
+	}
+	if len(fields) == 1 {
+		return amount * 1024 * 1024
+	}
+	switch fields[1] {
+	case "g", "gb", "gib":
+		return amount * 1024 * 1024 * 1024
+	case "k", "kb", "kib":
+		return amount * 1024
+	default:
+		return amount * 1024 * 1024
+	}
 }
 
 func parseProcessJiffies(value string) uint64 {

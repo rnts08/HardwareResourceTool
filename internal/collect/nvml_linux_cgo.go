@@ -24,6 +24,7 @@ typedef nvmlReturn_t (*nvmlGetEccModeFn)(nvmlDevice_t, unsigned int*, unsigned i
 typedef nvmlReturn_t (*nvmlGetEccErrorsFn)(nvmlDevice_t, unsigned int, unsigned int, unsigned long long*);
 typedef nvmlReturn_t (*nvmlGetMigModeFn)(nvmlDevice_t, unsigned int*, unsigned int*);
 typedef nvmlReturn_t (*nvmlGetMigCountFn)(nvmlDevice_t, unsigned int*);
+typedef nvmlReturn_t (*nvmlGetProcessesFn)(nvmlDevice_t, unsigned int*, void*);
 
 typedef struct { unsigned long long total, free, used; } hwtMemory;
 typedef struct { unsigned int gpu, memory; } hwtUtilization;
@@ -42,7 +43,16 @@ typedef struct {
     unsigned long long eccUncorrected;
     unsigned int migEnabled;
     unsigned int migInstances;
+    unsigned long long processMemory;
 } hwtNvmlGPU;
+
+typedef struct {
+    unsigned int pid;
+    unsigned int reserved;
+    unsigned long long usedGpuMemory;
+    unsigned int gpuInstanceId;
+    unsigned int computeInstanceId;
+} hwtProcessInfo;
 
 static void hwtError(char* error, unsigned int length, const char* prefix, int code) {
     if (length > 0) snprintf(error, length, "%s (%d)", prefix, code);
@@ -71,6 +81,9 @@ static unsigned int hwtNvmlCollect(hwtNvmlGPU* output, unsigned int capacity, ch
     nvmlGetEccErrorsFn getEccErrors = (nvmlGetEccErrorsFn)dlsym(library, "nvmlDeviceGetTotalEccErrors");
     nvmlGetMigModeFn getMigMode = (nvmlGetMigModeFn)dlsym(library, "nvmlDeviceGetMigMode");
     nvmlGetMigCountFn getMigCount = (nvmlGetMigCountFn)dlsym(library, "nvmlDeviceGetMaxMigDeviceCount");
+    nvmlGetProcessesFn getComputeProcesses = (nvmlGetProcessesFn)dlsym(library, "nvmlDeviceGetComputeRunningProcesses_v3");
+    nvmlGetProcessesFn getGraphicsProcesses = (nvmlGetProcessesFn)dlsym(library, "nvmlDeviceGetGraphicsRunningProcesses_v3");
+    nvmlGetProcessesFn getMPSProcesses = (nvmlGetProcessesFn)dlsym(library, "nvmlDeviceGetMPSComputeRunningProcesses_v3");
     if (!init || !shutdown || !getCount || !getHandle || !getPci) {
         if (errorLength > 0) snprintf(error, errorLength, "NVML required symbols unavailable");
         dlclose(library);
@@ -127,6 +140,37 @@ static unsigned int hwtNvmlCollect(hwtNvmlGPU* output, unsigned int capacity, ch
             if (getMigMode(device, &current, &pending) == 0) gpu->migEnabled = current != 0 || pending != 0;
         }
         if (getMigCount) getMigCount(device, &gpu->migInstances);
+        // Some driver/platform combinations expose a stale or incomplete
+        // device-wide memory.used value. Process accounting is read-only and
+        // provides a useful cross-check (and is what nvtop commonly presents).
+        unsigned int processCount;
+        hwtProcessInfo processInfo[256];
+        unsigned int processPids[256];
+        unsigned long long processBytes[256];
+        unsigned int uniqueProcesses = 0;
+        nvmlGetProcessesFn processQueries[3] = {getComputeProcesses, getGraphicsProcesses, getMPSProcesses};
+        memset(processPids, 0, sizeof(processPids));
+        memset(processBytes, 0, sizeof(processBytes));
+        for (unsigned int query = 0; query < 3; query++) {
+            if (!processQueries[query]) continue;
+            processCount = 256;
+            memset(processInfo, 0, sizeof(processInfo));
+            if (processQueries[query](device, &processCount, processInfo) != 0) continue;
+            if (processCount > 256) processCount = 256;
+            for (unsigned int p = 0; p < processCount; p++) {
+                if (processInfo[p].usedGpuMemory == (unsigned long long)-1) continue;
+                unsigned int index = uniqueProcesses;
+                for (unsigned int existing = 0; existing < uniqueProcesses; existing++) {
+                    if (processPids[existing] == processInfo[p].pid) { index = existing; break; }
+                }
+                if (index == uniqueProcesses && uniqueProcesses < 256) {
+                    processPids[index] = processInfo[p].pid;
+                    uniqueProcesses++;
+                }
+                if (index < 256 && processInfo[p].usedGpuMemory > processBytes[index]) processBytes[index] = processInfo[p].usedGpuMemory;
+            }
+        }
+        for (unsigned int p = 0; p < uniqueProcesses; p++) gpu->processMemory += processBytes[p];
     }
     shutdown();
     dlclose(library);
@@ -141,16 +185,16 @@ import (
 )
 
 type nvmlGPUData struct {
-	BusID, Name, UUID       string
-	MemoryTotal, MemoryUsed uint64
-	Utilization             float64
-	Temperature             float64
-	PowerWatts              float64
-	ECCEnabled              bool
-	ECCCorrected            uint64
-	ECCUncorrected          uint64
-	MIGEnabled              bool
-	MIGMaxInstances         uint64
+	BusID, Name, UUID                      string
+	MemoryTotal, MemoryUsed, MemoryProcess uint64
+	Utilization                            float64
+	Temperature                            float64
+	PowerWatts                             float64
+	ECCEnabled                             bool
+	ECCCorrected                           uint64
+	ECCUncorrected                         uint64
+	MIGEnabled                             bool
+	MIGMaxInstances                        uint64
 }
 
 func collectNVML() ([]nvmlGPUData, error) {
@@ -172,7 +216,7 @@ func collectNVML() ([]nvmlGPUData, error) {
 			BusID:       C.GoString((*C.char)(unsafe.Pointer(&gpu.busId[0]))),
 			Name:        C.GoString((*C.char)(unsafe.Pointer(&gpu.name[0]))),
 			UUID:        C.GoString((*C.char)(unsafe.Pointer(&gpu.uuid[0]))),
-			MemoryTotal: uint64(gpu.memoryTotal), MemoryUsed: uint64(gpu.memoryUsed),
+			MemoryTotal: uint64(gpu.memoryTotal), MemoryUsed: uint64(gpu.memoryUsed), MemoryProcess: uint64(gpu.processMemory),
 			Utilization: float64(gpu.utilization), Temperature: float64(gpu.temperature),
 			PowerWatts: float64(gpu.powerMilliwatts) / 1000,
 			ECCEnabled: bool(gpu.eccEnabled != 0), ECCCorrected: uint64(gpu.eccCorrected), ECCUncorrected: uint64(gpu.eccUncorrected),

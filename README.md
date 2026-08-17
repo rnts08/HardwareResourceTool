@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.2` (`v0.10.2`). It is focused on Linux hosts,
+The current release is `0.10.3` (`v0.10.3`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -35,9 +35,9 @@ For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
 - SMBIOS memory-device inventory and EDAC corrected/uncorrected counters when
   Linux exposes them.
 - NVIDIA PCI identity plus optional dynamically loaded NVML identity, UUID,
-  framebuffer memory, utilization, temperature, power, ECC, and MIG-mode
-  telemetry.
-- KVM/QEMU discovery from `/sys`, libvirt XML, `/proc`, cgroup v2, and bounded
+  device and running-process framebuffer memory accounting, utilization,
+  temperature, power, ECC, and MIG-mode telemetry.
+- KVM/QEMU discovery from Proxmox VE VM configuration, `/sys`, libvirt XML, `/proc`, cgroup v2, and bounded
   read-only QMP queries. VM data separates configured allocation, QEMU host
   process usage, cgroup usage, balloon values, guest-reported memory, device
   attachments, and physical NIC correlation.
@@ -100,7 +100,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.10.2 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.10.3 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 

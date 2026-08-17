@@ -66,12 +66,16 @@ References:
 
 NVIDIA display and 3D PCI functions (`vendor=0x10de`) are identified from the
 PCI inventory and enriched by an optional dynamically loaded NVML library:
-UUID, name, framebuffer memory, utilization, temperature, power, ECC mode and
-aggregate ECC counters, MIG mode, and maximum MIG device count are read through
+UUID, name, device-wide and running-process framebuffer memory, utilization,
+temperature, power, ECC mode and aggregate ECC counters, MIG mode, and maximum
+MIG device count are read through
 optional NVML getters. NVML is never linked at build time and no `nvidia-smi`
 subprocess is used. Missing libraries, unavailable devices, and unsupported
 getters remain explicit availability status in the model. Per-instance MIG
-inventory and NVLink telemetry remain future enrichment fields.
+inventory and NVLink telemetry remain future enrichment fields. If the sum of
+unique process framebuffer allocations is larger than the device-wide used
+value but no larger than total memory, process accounting becomes the reported
+used value and the source is exposed as `process-accounting`.
 
 Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 
@@ -95,9 +99,13 @@ Reference: <https://cdn.kernel.org/doc/html/latest/networking/ethtool-netlink.ht
 ## KVM/QEMU
 
 KVM availability is detected from the read-only `/sys/module/kvm` or
-`/dev/kvm` presence. Domain allocations come from readable libvirt XML under
-`/etc/libvirt/qemu`; when XML is unavailable, running QEMU command lines under
-`/proc` provide a fallback for VM name, vCPU, and memory arguments. QEMU
+`/dev/kvm` presence. On Proxmox VE, domain allocations come from readable
+`/etc/pve/qemu-server/*.conf` files, including VMID, configured vCPUs, maximum
+memory, and balloon minimum memory. Proxmox rows are correlated to running
+QEMU processes by VMID. Domain allocations also come from readable libvirt XML
+under `/etc/libvirt/qemu`; when configuration is unavailable, running QEMU
+command lines under `/proc` provide a fallback for VM name, vCPU, and memory
+arguments. QEMU
 process RSS is reported separately as host process usage. When cgroup v2 is
 available, current/max memory and aggregate read/write I/O are added; QEMU
 process CPU and `/proc/<pid>/io` are used as fallbacks. Disk, NIC, and PCI

@@ -77,6 +77,21 @@ func TestQEMUArgumentParsing(t *testing.T) {
 	}
 }
 
+func TestDiscoverProxmoxVMs(t *testing.T) {
+	etc := t.TempDir()
+	path := filepath.Join(etc, "pve/qemu-server/101.conf")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("name: database\ncores: 8\nsockets: 2\nvcpus: 12\nmemory: 94208\nballoon: 65536\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	vms := discoverProxmoxVMs(etc)
+	if len(vms) != 1 || vms[0].VMID != "101" || vms[0].Name != "database" || vms[0].ConfiguredVCPUs != 12 || vms[0].ConfiguredMemoryBytes != 94208*1024*1024 || !vms[0].BalloonEnabled || vms[0].BalloonTargetBytes != 65536*1024*1024 {
+		t.Fatalf("unexpected Proxmox VM: %#v", vms)
+	}
+}
+
 func TestVirtualizationParsers(t *testing.T) {
 	if got := parseNodeSet("0-2,4"); len(got) != 4 || got[2] != 2 || got[3] != 4 {
 		t.Fatalf("nodeset = %#v", got)

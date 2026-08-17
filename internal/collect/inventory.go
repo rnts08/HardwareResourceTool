@@ -49,6 +49,12 @@ func collectGPUTelemetry(s *model.Snapshot) {
 			s.GPUs[i].UUID = gpu.UUID
 			s.GPUs[i].MemoryBytes = gpu.MemoryTotal
 			s.GPUs[i].MemoryUsedBytes = gpu.MemoryUsed
+			s.GPUs[i].MemoryProcessBytes = gpu.MemoryProcess
+			s.GPUs[i].MemorySource = "device"
+			if gpu.MemoryProcess > gpu.MemoryUsed && gpu.MemoryProcess <= gpu.MemoryTotal {
+				s.GPUs[i].MemoryUsedBytes = gpu.MemoryProcess
+				s.GPUs[i].MemorySource = "process-accounting"
+			}
 			s.GPUs[i].UtilizationPercent = gpu.Utilization
 			s.GPUs[i].TemperatureCelsius = gpu.Temperature
 			s.GPUs[i].PowerWatts = gpu.PowerWatts

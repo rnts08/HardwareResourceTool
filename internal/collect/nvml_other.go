@@ -5,11 +5,11 @@ package collect
 import "errors"
 
 type nvmlGPUData struct {
-	BusID, Name, UUID       string
-	MemoryTotal, MemoryUsed uint64
-	Utilization             float64
-	Temperature             float64
-	PowerWatts              float64
+	BusID, Name, UUID                      string
+	MemoryTotal, MemoryUsed, MemoryProcess uint64
+	Utilization                            float64
+	Temperature                            float64
+	PowerWatts                             float64
 }
 
 func collectNVML() ([]nvmlGPUData, error) {

@@ -5,12 +5,13 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.5` (`v0.10.5`). It is focused on Linux hosts,
+The current release is `0.10.6` (`v0.10.6`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
 
-For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
+For installation and privilege choices, see [INSTALL.md](INSTALL.md). For the
+complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
 
 ## What is implemented
 
@@ -108,7 +109,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.10.4 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.10.6 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 

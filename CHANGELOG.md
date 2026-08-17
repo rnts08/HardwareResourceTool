@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.6 — 2026-08-17
+
+- Added `INSTALL.md` covering Makefile installation, sudoers, file
+  capabilities, setuid risks, privilege boundaries, verification, and
+  uninstall procedures.
+
 ## 0.10.5 — 2026-08-17
 
 - Added bounded, read-only classification of existing kernel/system log tails

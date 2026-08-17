@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.1 — 2026-08-17
+
+- Replaced the short README usage notes with Linux build, command, TUI, output,
+  safety, and limitation guidance.
+- Added `USERS_MANUAL.md` with field-by-field interpretation and safe finding
+  follow-up procedures.
+
 ## 0.9.0 — 2026-08-15
 
 - Refined KVM/QEMU accounting for newer QMP implementations used by current

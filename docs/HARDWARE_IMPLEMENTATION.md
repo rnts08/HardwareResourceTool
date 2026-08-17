@@ -77,6 +77,11 @@ unique process framebuffer allocations is larger than the device-wide used
 value but no larger than total memory, process accounting becomes the reported
 used value and the source is exposed as `process-accounting`.
 
+GPUs bound to `vfio-pci` or `pci-stub`, or listed in a Proxmox `hostpciN`
+configuration entry, are marked as passed through. PCI identity remains
+available, but host NVML telemetry is expected to be unavailable because the
+guest owns the device.
+
 Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 
 ## NICs

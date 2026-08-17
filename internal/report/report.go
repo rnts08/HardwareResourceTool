@@ -77,7 +77,9 @@ func WriteText(w io.Writer, result model.Report) error {
 		}
 	}
 	for _, gpu := range result.Snapshot.GPUs {
-		if gpu.NVML {
+		if gpu.PassedThrough {
+			fmt.Fprintf(w, "GPU: %s %s passed through (%s); host NVML telemetry unavailable\n", gpu.Address, gpu.Name, gpu.NVMLStatus)
+		} else if gpu.NVML {
 			fmt.Fprintf(w, "GPU: %s %s NVML available memory %.1f/%.1f GiB (%s; process %.1f GiB) util %.1f%% temp %.1fC power %.1fW ECC %t %d/%d MIG %t max-instances %d\n", gpu.Address, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
 		} else {
 			fmt.Fprintf(w, "GPU: %s NVML unavailable (%s)\n", gpu.Address, gpu.NVMLStatus)

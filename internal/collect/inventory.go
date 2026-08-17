@@ -30,21 +30,26 @@ func (c *Collector) collectHardware(s *model.Snapshot) error {
 }
 
 func collectGPUTelemetry(s *model.Snapshot) {
+	markGPUPassthrough(s)
 	if len(s.GPUs) == 0 {
 		return
 	}
 	data, err := collectNVML()
 	if err != nil {
 		for i := range s.GPUs {
-			s.GPUs[i].NVMLStatus = err.Error()
+			if !s.GPUs[i].PassedThrough {
+				s.GPUs[i].NVMLStatus = err.Error()
+			}
 		}
 		return
 	}
 	for i := range s.GPUs {
+		matched := false
 		for _, gpu := range data {
 			if normalizePCIAddress(gpu.BusID) != normalizePCIAddress(s.GPUs[i].Address) {
 				continue
 			}
+			matched = true
 			s.GPUs[i].Name = gpu.Name
 			s.GPUs[i].UUID = gpu.UUID
 			s.GPUs[i].MemoryBytes = gpu.MemoryTotal
@@ -61,7 +66,43 @@ func collectGPUTelemetry(s *model.Snapshot) {
 			s.GPUs[i].NVML = true
 			s.GPUs[i].NVMLStatus = "available"
 		}
+		if !matched && s.GPUs[i].PassedThrough {
+			s.GPUs[i].NVMLStatus = passthroughStatus(s.GPUs[i])
+		}
 	}
+}
+
+func markGPUPassthrough(s *model.Snapshot) {
+	for i := range s.GPUs {
+		gpu := &s.GPUs[i]
+		for _, device := range s.PCI {
+			if normalizePCIAddress(device.Address) != normalizePCIAddress(gpu.Address) {
+				continue
+			}
+			driver := strings.ToLower(strings.TrimSpace(device.Driver))
+			if driver == "vfio-pci" || driver == "pci-stub" {
+				gpu.PassedThrough = true
+			}
+		}
+		for _, vm := range s.Virtualization.VirtualMachines {
+			for _, address := range vm.PCIAddresses {
+				if normalizePCIAddress(address) == normalizePCIAddress(gpu.Address) {
+					gpu.PassedThrough = true
+					gpu.PassedThroughVM = vm.Name
+				}
+			}
+		}
+		if gpu.PassedThrough {
+			gpu.NVMLStatus = passthroughStatus(*gpu)
+		}
+	}
+}
+
+func passthroughStatus(gpu model.GPU) string {
+	if gpu.PassedThroughVM != "" {
+		return "passed through to KVM guest " + gpu.PassedThroughVM
+	}
+	return "passed through to KVM guest (host NVML unavailable)"
 }
 
 func (c *Collector) collectPCI(s *model.Snapshot) error {

@@ -202,7 +202,9 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
-		if gpu.NVML {
+		if gpu.PassedThrough {
+			fmt.Fprintf(b, "  %-16s %s:%s %s PASSED THROUGH (%s); host NVML unavailable\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, gpu.NVMLStatus)
+		} else if gpu.NVML {
 			fmt.Fprintf(b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
 		} else {
 			fmt.Fprintf(b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)

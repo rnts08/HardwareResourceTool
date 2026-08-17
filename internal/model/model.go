@@ -156,6 +156,8 @@ type GPU struct {
 	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
 	MemoryProcessBytes uint64  `json:"memory_process_bytes,omitempty"`
 	MemorySource       string  `json:"memory_source,omitempty"`
+	PassedThrough      bool    `json:"passed_through"`
+	PassedThroughVM    string  `json:"passed_through_vm,omitempty"`
 	ECCEnabled         bool    `json:"ecc_enabled,omitempty"`
 	ECCCorrected       uint64  `json:"ecc_corrected,omitempty"`
 	ECCUncorrected     uint64  `json:"ecc_uncorrected,omitempty"`

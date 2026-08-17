@@ -398,6 +398,13 @@ func discoverProxmoxVMs(etcRoot string) []model.VirtualMachine {
 		memory := parseConfigMemory(values["memory"])
 		balloon := parseConfigMemory(values["balloon"])
 		vm := model.VirtualMachine{Name: name, VMID: vmid, ConfiguredVCPUs: vcpus, ConfiguredMemoryBytes: memory, Source: "proxmox", Disks: []model.VirtualDisk{}, NICs: []model.VirtualNIC{}, PCIAddresses: []string{}}
+		for key, value := range values {
+			if strings.HasPrefix(key, "hostpci") {
+				if address := parseProxmoxPCIAddress(value); address != "" {
+					vm.PCIAddresses = append(vm.PCIAddresses, address)
+				}
+			}
+		}
 		if value, ok := values["balloon"]; ok && strings.TrimSpace(value) != "0" {
 			vm.BalloonEnabled = true
 			vm.BalloonTargetBytes = balloon
@@ -405,6 +412,16 @@ func discoverProxmoxVMs(etcRoot string) []model.VirtualMachine {
 		result = append(result, vm)
 	}
 	return result
+}
+
+func parseProxmoxPCIAddress(value string) string {
+	value = strings.TrimSpace(strings.SplitN(value, ",", 2)[0])
+	value = strings.TrimPrefix(value, "0000:")
+	parts := strings.Split(value, ":")
+	if len(parts) != 2 || !strings.Contains(parts[1], ".") {
+		return ""
+	}
+	return "0000:" + value
 }
 
 func mustReadLines(path string) []string {

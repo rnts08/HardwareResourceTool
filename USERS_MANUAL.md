@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.3. Hardware Resources Tool is a read-only
+This manual describes release 0.10.4. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.3 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.4 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -223,7 +223,10 @@ it available.
 NVIDIA rows always show PCI identity when discovered. With NVML, they add name,
 framebuffer used/total, process-accounted framebuffer memory, utilization, temperature, and power. If NVML is
 missing or cannot initialize, the GPU remains visible with an explicit status;
-zero values do not mean zero GPU load.
+zero values do not mean zero GPU load. If the device is bound to `vfio-pci` or
+`pci-stub`, or assigned through a Proxmox `hostpciN` entry, it is reported as
+passed through to a KVM guest; host NVML usage cannot be collected in that
+state.
 
 KVM/QEMU rows show VMID where available, running state, configured vCPUs, process/cgroup CPU,
 configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
@@ -306,7 +309,8 @@ SR-IOV total VFs, and Resizable BAR presence.
 
 gpus entries include PCI identity plus name, uuid, framebuffer total/used,
 process-accounted framebuffer bytes and memory_source, utilization, temperature, power, ECC enabled/corrected/uncorrected counts,
-MIG mode and maximum-instance information, nvml_available, and nvml_status. PCI
+MIG mode and maximum-instance information, passed_through, passed_through_vm,
+nvml_available, and nvml_status. PCI
 discovery is independent of NVML runtime telemetry.
 
 ### Virtualization

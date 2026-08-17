@@ -83,12 +83,24 @@ func TestDiscoverProxmoxVMs(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte("name: database\ncores: 8\nsockets: 2\nvcpus: 12\nmemory: 94208\nballoon: 65536\n"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("name: database\ncores: 8\nsockets: 2\nvcpus: 12\nmemory: 94208\nballoon: 65536\nhostpci0: 0000:65:00.0,pcie=1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	vms := discoverProxmoxVMs(etc)
-	if len(vms) != 1 || vms[0].VMID != "101" || vms[0].Name != "database" || vms[0].ConfiguredVCPUs != 12 || vms[0].ConfiguredMemoryBytes != 94208*1024*1024 || !vms[0].BalloonEnabled || vms[0].BalloonTargetBytes != 65536*1024*1024 {
+	if len(vms) != 1 || vms[0].VMID != "101" || vms[0].Name != "database" || vms[0].ConfiguredVCPUs != 12 || vms[0].ConfiguredMemoryBytes != 94208*1024*1024 || !vms[0].BalloonEnabled || vms[0].BalloonTargetBytes != 65536*1024*1024 || len(vms[0].PCIAddresses) != 1 || vms[0].PCIAddresses[0] != "0000:65:00.0" {
 		t.Fatalf("unexpected Proxmox VM: %#v", vms)
+	}
+}
+
+func TestMarkGPUPassthrough(t *testing.T) {
+	snapshot := model.Snapshot{
+		PCI: []model.PCIDevice{{Address: "0000:01:00.0", Driver: "vfio-pci"}},
+		GPUs: []model.GPU{{Address: "0000:01:00.0"}},
+		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "guest", PCIAddresses: []string{"0000:01:00.0"}}}},
+	}
+	markGPUPassthrough(&snapshot)
+	if !snapshot.GPUs[0].PassedThrough || snapshot.GPUs[0].PassedThroughVM != "guest" || snapshot.GPUs[0].NVMLStatus == "" {
+		t.Fatalf("GPU passthrough was not identified: %#v", snapshot.GPUs[0])
 	}
 }
 

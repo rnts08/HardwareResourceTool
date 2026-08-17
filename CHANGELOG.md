@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.4 — 2026-08-17
+
+- Detect NVIDIA GPUs bound to `vfio-pci`/`pci-stub` or assigned through
+  Proxmox `hostpciN` configuration.
+- Report passed-through GPUs as available PCI hardware while explicitly
+  explaining that host NVML telemetry is unavailable and naming the guest when
+  it can be correlated.
+- Added passthrough detection fixture coverage and updated user-facing output
+  and documentation.
+
 ## 0.10.3 — 2026-08-17
 
 - Added read-only Proxmox VE VM configuration discovery from

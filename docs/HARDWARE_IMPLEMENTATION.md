@@ -45,15 +45,33 @@ machines and is represented by an empty or partial inventory.
 
 Reference: <https://docs.kernel.org/next/admin-guide/ras.html>
 
+## Filesystem capacity
+
+Filesystem capacity is intentionally narrower than `/proc/mounts`. The
+collector accepts physical non-USB block-backed filesystems, following
+device-mapper slave devices where possible, and mounted network filesystems
+whose mount points and types are present in `/etc/fstab`. It excludes runtime
+and presentation layers including `/run`, `/dev/shm`, `/var/lib/docker`,
+tmpfs, overlayfs, snap filesystems, pseudo-filesystems, loop devices, and USB
+storage. This prevents ephemeral/container/shared-memory capacity from being
+mistaken for durable host storage.
+
+References:
+
+- Linux tmpfs: <https://docs.kernel.org/filesystems/tmpfs.html>
+- Linux OverlayFS: <https://docs.kernel.org/filesystems/overlayfs.html>
+- Linux fstab: <https://man7.org/linux/man-pages/man5/fstab.5.html>
+
 ## NVIDIA GPUs
 
 NVIDIA display and 3D PCI functions (`vendor=0x10de`) are identified from the
 PCI inventory and enriched by an optional dynamically loaded NVML library:
-UUID, name, framebuffer memory, utilization, temperature, and power are read
-through NVML getters. NVML is never linked at build time and no `nvidia-smi`
+UUID, name, framebuffer memory, utilization, temperature, power, ECC mode and
+aggregate ECC counters, MIG mode, and maximum MIG device count are read through
+optional NVML getters. NVML is never linked at build time and no `nvidia-smi`
 subprocess is used. Missing libraries, unavailable devices, and unsupported
-getters remain explicit availability status in the model. ECC, MIG, and NVLink
-remain future enrichment fields.
+getters remain explicit availability status in the model. Per-instance MIG
+inventory and NVLink telemetry remain future enrichment fields.
 
 Reference: <https://docs.nvidia.com/deploy/nvml-api/index.html>
 
@@ -63,7 +81,8 @@ The base collector uses `/sys/class/net`, but the primary NIC list is limited
 to interfaces with a sysfs `device` backing path; bridges, veth, tap, loopback,
 and other device-less virtual interfaces are counted separately rather than
 reported as physical hardware. Read-only ethtool ioctl data supplies ring
-sizes, channels, pause state, and timestamping/PHC information, and the Linux
+sizes, channels, pause state, timestamping/PHC information, and driver
+statistics where the legacy GET interface exposes them, and the Linux
 ethtool generic-netlink `*_GET` operations supply link state,
 duplex/autonegotiation, interface/peer link modes, and FEC. Driver identity is
 read from the PCI sysfs driver link. Unsupported virtual devices retain an

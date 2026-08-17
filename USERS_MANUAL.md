@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.1. Hardware Resources Tool is a read-only
+This manual describes release 0.10.2. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.2 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -169,9 +169,20 @@ filtered. These are host block-device rates, not necessarily guest filesystem
 rates.
 
 Filesystems show mount point, read/write mode, used percentage, available
-bytes, and type. /proc, /sys, cgroups, debugfs, and other pseudo-filesystems
-are omitted because their capacity does not represent host storage. An
-apparent 0% on one must not be treated as free physical disk space.
+bytes, and type. The capacity list includes physical non-USB block-backed
+filesystems and currently mounted network filesystems only when their mount
+point and type are declared in `/etc/fstab`. `/proc`, `/sys`, cgroups, `/run`,
+`/dev/shm`, `/var/lib/docker`, overlay mounts, snap filesystems, tmpfs, and
+other runtime or pseudo-filesystems are omitted. Removable USB block devices
+are omitted from the stable host-capacity baseline.
+
+This is intentional: tmpfs stores files in virtual memory, `/dev/shm` is used
+for POSIX shared memory, OverlayFS is a merged upper/lower view, and fstab is
+the system’s static filesystem configuration. The collector reports mounted
+network filesystems only when they are also part of that persistent
+configuration. See the Linux kernel documentation for [tmpfs](https://docs.kernel.org/filesystems/tmpfs.html)
+and [OverlayFS](https://docs.kernel.org/filesystems/overlayfs.html), and the
+Linux `fstab(5)` reference for [static filesystem entries](https://man7.org/linux/man-pages/man5/fstab.5.html).
 
 ### Network
 

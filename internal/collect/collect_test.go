@@ -83,10 +83,12 @@ func TestCollectNetworkMetadata(t *testing.T) {
 
 func TestCollectFilesystemCapacity(t *testing.T) {
 	proc := t.TempDir()
+	sys := t.TempDir()
 	mountPoint := t.TempDir()
-	writeFixture(t, proc, "mounts", "fixture "+mountPoint+" tmpfs rw,nosuid 0 0\n")
+	writePhysicalBlockFixture(t, sys, "sda1", false)
+	writeFixture(t, proc, "mounts", "/dev/sda1 "+mountPoint+" ext4 rw,relatime 0 0\n")
 	snapshot := model.Snapshot{Filesystems: []model.Filesystem{}}
-	if err := (&Collector{procRoot: proc}).collectFilesystems(&snapshot); err != nil {
+	if err := (&Collector{procRoot: proc, sysRoot: sys}).collectFilesystems(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if len(snapshot.Filesystems) != 1 || snapshot.Filesystems[0].MountPoint != mountPoint || snapshot.Filesystems[0].ReadOnly {
@@ -96,14 +98,54 @@ func TestCollectFilesystemCapacity(t *testing.T) {
 
 func TestCollectFilesystemFiltersPseudoFilesystems(t *testing.T) {
 	proc := t.TempDir()
+	sys := t.TempDir()
 	mountPoint := t.TempDir()
-	writeFixture(t, proc, "mounts", "proc /proc proc rw,nosuid 0 0\nfixture "+mountPoint+" tmpfs rw,nosuid 0 0\n")
+	writePhysicalBlockFixture(t, sys, "sda1", false)
+	writeFixture(t, proc, "mounts", "proc /proc proc rw,nosuid 0 0\n/dev/sda1 "+mountPoint+" ext4 rw,nosuid 0 0\n/dev/shm /dev/shm tmpfs rw,nosuid 0 0\n")
 	snapshot := model.Snapshot{Filesystems: []model.Filesystem{}}
-	if err := (&Collector{procRoot: proc}).collectFilesystems(&snapshot); err != nil {
+	if err := (&Collector{procRoot: proc, sysRoot: sys}).collectFilesystems(&snapshot); err != nil {
 		t.Fatal(err)
 	}
 	if len(snapshot.Filesystems) != 1 || snapshot.Filesystems[0].MountPoint != mountPoint {
 		t.Fatalf("pseudo filesystem was not filtered: %#v", snapshot.Filesystems)
+	}
+}
+
+func TestFilesystemPolicyExcludesRemovableAndRuntimeMounts(t *testing.T) {
+	proc, sys, etc := t.TempDir(), t.TempDir(), t.TempDir()
+	point := t.TempDir()
+	networkPoint := filepath.Join(t.TempDir(), "archive")
+	if err := os.MkdirAll(networkPoint, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePhysicalBlockFixture(t, sys, "sdb1", true)
+	writePhysicalBlockFixture(t, sys, "sda1", false)
+	writeFixture(t, etc, "fstab", "server:/export "+networkPoint+" nfs4 _netdev,defaults 0 0\n")
+	writeFixture(t, proc, "mounts", "/dev/sdb1 "+point+" ext4 rw 0 0\n/dev/sda1 /run/data ext4 rw 0 0\n/dev/sda1 /var/lib/docker ext4 rw 0 0\nserver:/export "+networkPoint+" nfs4 rw,relatime 0 0\nserver:/other /mnt/other nfs4 rw,relatime 0 0\n")
+	snapshot := model.Snapshot{Filesystems: []model.Filesystem{}}
+	if err := (&Collector{procRoot: proc, sysRoot: sys, etcRoot: etc}).collectFilesystems(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Filesystems) != 1 || snapshot.Filesystems[0].MountPoint != networkPoint {
+		t.Fatalf("unexpected filtered filesystems: %#v", snapshot.Filesystems)
+	}
+}
+
+func writePhysicalBlockFixture(t *testing.T, sys, name string, usb bool) {
+	t.Helper()
+	base := filepath.Join(sys, "class/block", name)
+	device := filepath.Join(sys, "devices", "pci0000:00")
+	if usb {
+		device = filepath.Join(sys, "devices", "pci0000:00", "usb1", "1-1")
+	}
+	if err := os.MkdirAll(device, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(device, filepath.Join(base, "device")); err != nil {
+		t.Fatal(err)
 	}
 }
 

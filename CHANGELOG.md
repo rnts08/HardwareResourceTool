@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.10.2 — 2026-08-17
+
+- Restricted filesystem capacity reporting to physical non-USB block-backed
+  filesystems and mounted network filesystems declared in `/etc/fstab`.
+- Filtered `/run`, `/dev/shm`, `/var/lib/docker`, overlay, snap, tmpfs,
+  pseudo-filesystem, loop, and removable USB mounts from capacity output.
+- Added filesystem-policy fixture coverage and documentation references.
+
 ## 0.10.1 — 2026-08-17
 
 - Added first-run Linux capture instructions and JSON inspection examples to

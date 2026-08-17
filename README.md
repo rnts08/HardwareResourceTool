@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.1` (`v0.10.1`). It is focused on Linux hosts,
+The current release is `0.10.2` (`v0.10.2`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -19,8 +19,10 @@ For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
 - Memory availability, swap totals, swap activity, memory utilization, and
   selected pressure-related indicators.
 - Block-device throughput, operations, and in-flight I/O.
-- Capacity filesystem reporting with pseudo-filesystems such as `/proc`,
-  `/sys`, cgroups, and debug filesystems filtered out.
+- Capacity filesystem reporting limited to physical non-USB block-backed
+  filesystems and currently mounted network filesystems declared in `/etc/fstab`.
+  Runtime mounts such as `/run`, `/dev/shm`, `/var/lib/docker`, overlays,
+  snap filesystems, pseudo-filesystems, and removable USB storage are filtered.
 - Physical NIC throughput, link state, speed, duplex, autonegotiation, driver,
   FEC, supported/advertised/peer modes, queues, rings, errors, and drops.
   Additional read-only GET telemetry includes maximum channel counts, pause
@@ -98,7 +100,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.10.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.10.2 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 

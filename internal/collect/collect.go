@@ -294,6 +294,15 @@ func (c *Collector) collectFilesystems(s *model.Snapshot) error {
 	if err != nil {
 		return fmt.Errorf("filesystems: %w", err)
 	}
+	etcRoot := c.etcRoot
+	if etcRoot == "" {
+		etcRoot = "/etc"
+	}
+	sysRoot := c.sysRoot
+	if sysRoot == "" {
+		sysRoot = "/sys"
+	}
+	fstabNetworks := readFstabNetworkMounts(filepath.Join(etcRoot, "fstab"))
 	seen := map[string]bool{}
 	for _, line := range lines {
 		fields := strings.Fields(line)
@@ -301,8 +310,20 @@ func (c *Collector) collectFilesystems(s *model.Snapshot) error {
 			continue
 		}
 		mountPoint := decodeMountField(fields[1])
-		if isPseudoFilesystem(fields[2]) {
+		fsType := fields[2]
+		if isPseudoFilesystem(fsType) || excludedFilesystemMount(mountPoint) {
 			continue
+		}
+		source := decodeMountField(fields[0])
+		if isNetworkFilesystem(fsType) {
+			if !fstabNetworks[mountPoint] {
+				continue
+			}
+		} else {
+			physical, usb := isPhysicalBlockDevice(sysRoot, source)
+			if !physical || usb {
+				continue
+			}
 		}
 		if seen[mountPoint] {
 			continue
@@ -325,9 +346,25 @@ func (c *Collector) collectFilesystems(s *model.Snapshot) error {
 				break
 			}
 		}
-		s.Filesystems = append(s.Filesystems, model.Filesystem{Device: decodeMountField(fields[0]), MountPoint: mountPoint, Type: fields[2], TotalBytes: total, AvailableBytes: available, UsedPercent: used, ReadOnly: readOnly})
+		s.Filesystems = append(s.Filesystems, model.Filesystem{Device: source, MountPoint: mountPoint, Type: fsType, TotalBytes: total, AvailableBytes: available, UsedPercent: used, ReadOnly: readOnly})
 	}
 	return nil
+}
+
+func readFstabNetworkMounts(path string) map[string]bool {
+	result := map[string]bool{}
+	lines, err := readLines(path)
+	if err != nil {
+		return result
+	}
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.SplitN(line, "#", 2)[0])
+		fields := strings.Fields(line)
+		if len(fields) >= 4 && isNetworkFilesystem(fields[2]) {
+			result[decodeMountField(fields[1])] = true
+		}
+	}
+	return result
 }
 
 func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {

@@ -5,15 +5,19 @@ package collect
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"net"
 	"time"
 )
 
 type qmpBalloonData struct {
-	status, source        string
-	actual, target        uint64
-	committed, available  uint64
-	reported, guestReport bool
+	status, source            string
+	version                   string
+	actual, target            uint64
+	committed, available      uint64
+	baseMemory, pluggedMemory uint64
+	vcpus, enabledVCPUs       int64
+	reported, guestReport     bool
 }
 
 func queryQMP(path string) (qmpBalloonData, bool) {
@@ -33,6 +37,11 @@ func queryQMP(path string) (qmpBalloonData, bool) {
 	}
 	if _, err := writeQMPCommand(conn, reader, "qmp_capabilities"); err != nil {
 		return data, false
+	}
+	if response, err := writeQMPCommand(conn, reader, "query-version"); err == nil {
+		if qemu, ok := response["qemu"].(map[string]interface{}); ok {
+			data.version = qmpVersion(qemu)
+		}
 	}
 	if response, err := writeQMPCommand(conn, reader, "query-status"); err == nil {
 		if value, ok := response["status"].(string); ok {
@@ -65,10 +74,38 @@ func queryQMP(path string) (qmpBalloonData, bool) {
 			data.source = "query-hv-balloon-status-report"
 		}
 	}
-	return data, data.status != "" || data.reported
+	if response, err := writeQMPCommand(conn, reader, "query-memory-size-summary"); err == nil {
+		data.baseMemory, _ = qmpUint(response["base-memory"])
+		data.pluggedMemory, _ = qmpUint(response["plugged-memory"])
+	}
+	if response, err := writeQMPCommandAny(conn, reader, "query-cpus-fast"); err == nil {
+		if cpus, ok := response.([]interface{}); ok {
+			data.vcpus = int64(len(cpus))
+			for _, item := range cpus {
+				if cpu, ok := item.(map[string]interface{}); ok {
+					if enabled, ok := cpu["enabled"].(bool); !ok || enabled {
+						data.enabledVCPUs++
+					}
+				}
+			}
+		}
+	}
+	return data, data.status != "" || data.reported || data.version != "" || data.baseMemory != 0 || data.vcpus != 0
 }
 
 func writeQMPCommand(conn net.Conn, reader *bufio.Reader, command string) (map[string]interface{}, error) {
+	message, err := writeQMPCommandAny(conn, reader, command)
+	if err != nil {
+		return nil, err
+	}
+	value, ok := message.(map[string]interface{})
+	if !ok {
+		return nil, net.ErrClosed
+	}
+	return value, nil
+}
+
+func writeQMPCommandAny(conn net.Conn, reader *bufio.Reader, command string) (interface{}, error) {
 	payload, _ := json.Marshal(map[string]interface{}{"execute": command})
 	payload = append(payload, '\n')
 	if _, err := conn.Write(payload); err != nil {
@@ -79,13 +116,23 @@ func writeQMPCommand(conn net.Conn, reader *bufio.Reader, command string) (map[s
 		if !ok {
 			return nil, net.ErrClosed
 		}
-		if value, ok := message["return"].(map[string]interface{}); ok {
+		if value, ok := message["return"]; ok {
 			return value, nil
 		}
 		if _, ok := message["error"]; ok {
 			return nil, net.ErrClosed
 		}
 	}
+}
+
+func qmpVersion(value map[string]interface{}) string {
+	major, majorOK := qmpUint(value["major"])
+	minor, minorOK := qmpUint(value["minor"])
+	micro, microOK := qmpUint(value["micro"])
+	if !majorOK || !minorOK || !microOK {
+		return ""
+	}
+	return fmt.Sprintf("%d.%d.%d", major, minor, micro)
 }
 
 func readQMPMessage(reader *bufio.Reader) (map[string]interface{}, bool) {

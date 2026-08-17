@@ -23,6 +23,12 @@ func TestCollectVirtualizationMergesLibvirtAndQEMUProcess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(qemu, "statm"), []byte("100 10 0 0 0 0 0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(qemu, "smaps_rollup"), []byte("Rss: 40960 kB\nAnonHugePages: 2048 kB\nHugetlb: 1024 kB\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(qemu, "numa_maps"), []byte("00400000 default file=/bin/qemu N0=2 N1=1\n00600000 anon N0=3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(qemu, "cgroup"), []byte("0::machine.slice/guest-a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +62,7 @@ func TestCollectVirtualizationMergesLibvirtAndQEMUProcess(t *testing.T) {
 		t.Fatalf("unexpected VM process data: %#v", virt.VirtualMachines[0])
 	}
 	vm := virt.VirtualMachines[0]
-	if !vm.CgroupAvailable || vm.MemoryCurrentBytes != 4294967296 || vm.ReadBytes != 1000 || vm.WriteBytes != 2000 || len(vm.Disks) != 1 || len(vm.NICs) != 1 || len(vm.PCIAddresses) != 1 || !vm.Hugepages || vm.HugepageBytes != 2*1024*1024 || len(vm.NUMANodes) != 1 || vm.NUMANodes[0] != 0 || !vm.BalloonEnabled {
+	if !vm.CgroupAvailable || vm.MemoryCurrentBytes != 4294967296 || vm.ReadBytes != 1000 || vm.WriteBytes != 2000 || len(vm.Disks) != 1 || len(vm.NICs) != 1 || len(vm.PCIAddresses) != 1 || !vm.Hugepages || vm.HugepageBytes != 2*1024*1024 || len(vm.NUMANodes) != 1 || vm.NUMANodes[0] != 0 || !vm.BalloonEnabled || vm.RuntimeAnonHugeBytes != 2*1024*1024 || vm.RuntimeHugetlbBytes != 1024*1024 || vm.RuntimeNUMABytes[0] != 5*uint64(os.Getpagesize()) || vm.RuntimeNUMABytes[1] != uint64(os.Getpagesize()) {
 		t.Fatalf("unexpected deep virtualization data: %#v", vm)
 	}
 }
@@ -83,5 +89,8 @@ func TestVirtualizationParsers(t *testing.T) {
 	}
 	if got := parseProcessJiffies("123 (qemu name) S 1 2 3 4 5 6 7 8 9 10 11 12 13"); got != 23 {
 		t.Fatalf("process jiffies = %d", got)
+	}
+	if got := qmpVersion(map[string]interface{}{"major": float64(9), "minor": float64(2), "micro": float64(1)}); got != "9.2.1" {
+		t.Fatalf("QMP version = %q", got)
 	}
 }

@@ -179,7 +179,7 @@ func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
 	for _, network := range snapshot.Networks {
 		fmt.Fprintf(b, "  %-16s %-8s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
 		if network.Driver != "" || network.LinkDuplex != "" || network.FECActive != "" {
-			fmt.Fprintf(b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes))
+			fmt.Fprintf(b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d  max channels %d/%d/%d  pause %t/%t  ts %t phc %d  stats %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes), network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels, network.RXPause, network.TXPause, network.Timestamping, network.PHCIndex, len(network.DriverStats))
 		}
 	}
 }
@@ -203,7 +203,7 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
 		if gpu.NVML {
-			fmt.Fprintf(b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB  util %.1f%%  temp %.1fC  power %.1fW\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+			fmt.Fprintf(b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
 		} else {
 			fmt.Fprintf(b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
 		}
@@ -211,7 +211,7 @@ func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
 	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
 		b.WriteString("\nKVM/QEMU domains\n")
 		for _, vm := range snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(b, "  %-20s run=%t vCPU %d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB I/O %6.1f/%6.1f MiB balloon actual/reclaimed %5.1f/%5.1f GiB target %5.1f GiB guest committed/available %5.1f/%5.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024), float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonReclaimedBytes)/(1024*1024*1024), float64(vm.BalloonTargetBytes)/(1024*1024*1024), float64(vm.BalloonCommittedBytes)/(1024*1024*1024), float64(vm.BalloonAvailableBytes)/(1024*1024*1024), vm.NUMANodes)
+			fmt.Fprintf(b, "  %-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB huge/hugetlb %6.1f/%6.1f MiB QMP %s base/plug %6.1f/%6.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), vm.NUMANodes)
 		}
 	}
 	b.WriteString("\nMemory devices\n")

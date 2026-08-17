@@ -42,7 +42,7 @@ func WriteText(w io.Writer, result model.Report) error {
 	if result.Snapshot.Virtualization.QEMUDetected || result.Snapshot.Virtualization.KVMAvailable || len(result.Snapshot.Virtualization.VirtualMachines) > 0 {
 		fmt.Fprintf(w, "Virtualization: %s, VMs %d, allocated vCPU %d (%.2fx), memory %.1f GiB (%.2fx)\n", result.Snapshot.Virtualization.Hypervisor, len(result.Snapshot.Virtualization.VirtualMachines), result.Snapshot.Virtualization.AllocatedVCPUs, result.Snapshot.Virtualization.VCPUOvercommitRatio, float64(result.Snapshot.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), result.Snapshot.Virtualization.MemoryOvercommitRatio)
 		for _, vm := range result.Snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(w, "VM: %s %s running=%t vCPU %d CPU %.1f%% cgroup %.1f%% memory %.1f GiB current %.1f GiB RSS %.1f MiB I/O %.1f/%.1f MiB balloon actual %.1f GiB reclaimed %.1f GiB target %.1f GiB committed %.1f GiB available %.1f GiB source %s QMP %s NUMA %v hugepages=%t\n", vm.Name, vm.Source, vm.Running, vm.ConfiguredVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024), float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonReclaimedBytes)/(1024*1024*1024), float64(vm.BalloonTargetBytes)/(1024*1024*1024), float64(vm.BalloonCommittedBytes)/(1024*1024*1024), float64(vm.BalloonAvailableBytes)/(1024*1024*1024), vm.BalloonSource, vm.QMPStatus, vm.NUMANodes, vm.Hugepages)
+			fmt.Fprintf(w, "VM: %s %s running=%t vCPU %d/%d CPU %.1f%% cgroup %.1f%% memory %.1f GiB current %.1f GiB RSS %.1f MiB huge/hugetlb %.1f/%.1f MiB QMP %s base/plug %.1f/%.1f GiB I/O %.1f/%.1f MiB balloon actual %.1f GiB reclaimed %.1f GiB target %.1f GiB committed %.1f GiB available %.1f GiB source %s status %s NUMA %v hugepages=%t\n", vm.Name, vm.Source, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024), float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonReclaimedBytes)/(1024*1024*1024), float64(vm.BalloonTargetBytes)/(1024*1024*1024), float64(vm.BalloonCommittedBytes)/(1024*1024*1024), float64(vm.BalloonAvailableBytes)/(1024*1024*1024), vm.BalloonSource, vm.QMPStatus, vm.NUMANodes, vm.Hugepages)
 			for _, disk := range vm.Disks {
 				fmt.Fprintf(w, "  VM disk: %s %s (%s)\n", disk.Target, disk.Source, disk.Bus)
 			}
@@ -66,7 +66,7 @@ func WriteText(w io.Writer, result model.Report) error {
 		fmt.Fprintf(w, "Filesystem: %s %s %.1f%% used, %.1f GiB available\n", filesystem.MountPoint, mode, filesystem.UsedPercent, float64(filesystem.AvailableBytes)/(1024*1024*1024))
 	}
 	for _, network := range result.Snapshot.Networks {
-		fmt.Fprintf(w, "Network: %s %s PCI %s %.1f/%.1f KiB/s, speed %d Mb/s, driver %s, duplex %s, FEC %s, rings %d/%d\n", network.Name, network.State, network.PCIAddress, network.RXBytesPerSec/1024, network.TXBytesPerSec/1024, network.LinkSpeedMbps, network.Driver, network.LinkDuplex, network.FECActive, network.RXRingSize, network.TXRingSize)
+		fmt.Fprintf(w, "Network: %s %s PCI %s %.1f/%.1f KiB/s, speed %d Mb/s, driver %s, duplex %s, FEC %s, rings %d/%d, channels %d/%d/%d, pause %t/%t, timestamping %t PHC %d, stats %d\n", network.Name, network.State, network.PCIAddress, network.RXBytesPerSec/1024, network.TXBytesPerSec/1024, network.LinkSpeedMbps, network.Driver, network.LinkDuplex, network.FECActive, network.RXRingSize, network.TXRingSize, network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels, network.RXPause, network.TXPause, network.Timestamping, network.PHCIndex, len(network.DriverStats))
 	}
 	if result.Snapshot.VirtualNetworkCount > 0 {
 		fmt.Fprintf(w, "Virtual/device-less network interfaces filtered: %d\n", result.Snapshot.VirtualNetworkCount)
@@ -78,7 +78,7 @@ func WriteText(w io.Writer, result model.Report) error {
 	}
 	for _, gpu := range result.Snapshot.GPUs {
 		if gpu.NVML {
-			fmt.Fprintf(w, "GPU: %s %s NVML available memory %.1f/%.1f GiB util %.1f%% temp %.1fC power %.1fW\n", gpu.Address, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts)
+			fmt.Fprintf(w, "GPU: %s %s NVML available memory %.1f/%.1f GiB util %.1f%% temp %.1fC power %.1fW ECC %t %d/%d MIG %t max-instances %d\n", gpu.Address, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
 		} else {
 			fmt.Fprintf(w, "GPU: %s NVML unavailable (%s)\n", gpu.Address, gpu.NVMLStatus)
 		}

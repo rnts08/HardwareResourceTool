@@ -9,15 +9,24 @@ import (
 )
 
 type ethtoolData struct {
-	Duplex       string
-	Autoneg      string
-	LinkUp       bool
-	Supported    []string
-	Advertised   []string
-	Peer         []string
-	FECActive    string
-	FECSupported string
-	Error        string
+	Duplex              string
+	Autoneg             string
+	LinkUp              bool
+	Supported           []string
+	Advertised          []string
+	Peer                []string
+	FECActive           string
+	FECSupported        string
+	MaxRXChannels       int64
+	MaxTXChannels       int64
+	MaxCombinedChannels int64
+	PauseAutoneg        bool
+	RXPause             bool
+	TXPause             bool
+	Timestamping        bool
+	PHCIndex            int64
+	DriverStats         map[string]uint64
+	Error               string
 }
 
 // enrichNetworks performs one read-only generic-netlink client session for a
@@ -37,6 +46,19 @@ func enrichNetworks(names []string) map[string]ethtoolData {
 
 	for _, name := range names {
 		data := ethtoolData{}
+		readOnly := readEthtoolReadOnly(name)
+		data.MaxRXChannels = readOnly.MaxRXChannels
+		data.MaxTXChannels = readOnly.MaxTXChannels
+		data.MaxCombinedChannels = readOnly.MaxCombined
+		data.PauseAutoneg = readOnly.PauseAutoneg
+		data.RXPause = readOnly.RXPause
+		data.TXPause = readOnly.TXPause
+		data.Timestamping = readOnly.Timestamping
+		data.PHCIndex = readOnly.PHCIndex
+		data.DriverStats = readOnly.DriverStats
+		if readOnly.Error != "" {
+			data.Error = appendEtHToolError(data.Error, "read-only details", fmt.Errorf("%s", readOnly.Error))
+		}
 		iface := ethtool.Interface{Name: name}
 		if mode, modeErr := client.LinkMode(iface); modeErr == nil {
 			data.Duplex = mode.Duplex.String()

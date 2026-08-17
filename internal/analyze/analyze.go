@@ -53,6 +53,11 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "network", Title: "Network errors or drops detected", Evidence: fmt.Sprintf("%s errors rx=%d tx=%d, drops rx=%d tx=%d", network.Name, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops), Recommendation: "Inspect NIC health, link negotiation, driver counters, queue sizing, and host network contention."})
 		}
 	}
+	for _, gpu := range s.GPUs {
+		if gpu.NVML && gpu.ECCUncorrected > 0 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "gpu", Title: "GPU uncorrected ECC errors are present", Evidence: fmt.Sprintf("%s reports %d uncorrected aggregate ECC errors", gpu.Address, gpu.ECCUncorrected), Recommendation: "Correlate the counter with NVIDIA Xid logs, workload history, temperature, power, and vendor health guidance before continuing critical workloads."})
+		}
+	}
 	for _, device := range s.PCI {
 		if device.PCIeCapabilityMaxSpeed != "" && device.PCIeNegotiatedSpeed != "" && (device.PCIeCapabilityMaxSpeed != device.PCIeNegotiatedSpeed || device.PCIeCapabilityMaxWidth > device.PCIeNegotiatedWidth) {
 			findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "PCIe link is negotiated below capability", Evidence: fmt.Sprintf("%s negotiated %s x%d; capability is %s x%d", device.Address, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth), Recommendation: "Check slot wiring, bifurcation, firmware policy, bridge compatibility, and link training before treating the endpoint as fully provisioned."})
@@ -102,6 +107,21 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 				}
 				if len(invalid) > 0 {
 					findings = append(findings, model.Finding{Severity: "warning", Category: "numa", Title: "VM NUMA nodeset is outside host topology", Evidence: fmt.Sprintf("%s requests nodes %v but host reports %d NUMA nodes", vm.Name, invalid, s.NUMA.Nodes), Recommendation: "Correct the libvirt NUMA policy to use host node indexes; an invalid nodeset can prevent startup or defeat locality."})
+				}
+			}
+			if len(vm.NUMANodes) > 0 && len(vm.RuntimeNUMABytes) > 0 {
+				allowed := map[int]bool{}
+				for _, node := range vm.NUMANodes {
+					allowed[node] = true
+				}
+				outside := []int{}
+				for node, bytes := range vm.RuntimeNUMABytes {
+					if bytes > 0 && !allowed[node] {
+						outside = append(outside, node)
+					}
+				}
+				if len(outside) > 0 {
+					findings = append(findings, model.Finding{Severity: "info", Category: "numa", Title: "QEMU memory is resident outside configured NUMA nodeset", Evidence: fmt.Sprintf("%s has runtime pages on nodes %v outside configured nodes %v", vm.Name, outside, vm.NUMANodes), Recommendation: "Verify whether migration, memory policy, hotplug, shared mappings, or incomplete numa_maps visibility explains the placement before changing pinning."})
 				}
 			}
 			if vm.CgroupAvailable && vm.MemoryMaxBytes > 0 && float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes) > 0.9 {

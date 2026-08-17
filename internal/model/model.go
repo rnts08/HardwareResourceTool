@@ -56,36 +56,45 @@ type Disk struct {
 }
 
 type Network struct {
-	Name                string   `json:"name"`
-	State               string   `json:"state"`
-	RXBytes             uint64   `json:"rx_bytes"`
-	TXBytes             uint64   `json:"tx_bytes"`
-	RXBytesPerSec       float64  `json:"rx_bytes_per_second"`
-	TXBytesPerSec       float64  `json:"tx_bytes_per_second"`
-	RXPackets           int64    `json:"rx_packets"`
-	TXPackets           int64    `json:"tx_packets"`
-	RXErrors            int64    `json:"rx_errors"`
-	TXErrors            int64    `json:"tx_errors"`
-	RXDrops             int64    `json:"rx_drops"`
-	TXDrops             int64    `json:"tx_drops"`
-	LinkSpeedMbps       int64    `json:"link_speed_mbps,omitempty"`
-	MTU                 int64    `json:"mtu,omitempty"`
-	RXQueues            int64    `json:"rx_queues,omitempty"`
-	TXQueues            int64    `json:"tx_queues,omitempty"`
-	RXRingSize          int64    `json:"rx_ring_size,omitempty"`
-	TXRingSize          int64    `json:"tx_ring_size,omitempty"`
-	Driver              string   `json:"driver,omitempty"`
-	LinkDuplex          string   `json:"link_duplex,omitempty"`
-	AutoNegotiation     string   `json:"autonegotiation,omitempty"`
-	LinkUp              bool     `json:"link_up,omitempty"`
-	SupportedLinkModes  []string `json:"supported_link_modes,omitempty"`
-	AdvertisedLinkModes []string `json:"advertised_link_modes,omitempty"`
-	PeerLinkModes       []string `json:"peer_link_modes,omitempty"`
-	FECActive           string   `json:"fec_active,omitempty"`
-	FECSupported        string   `json:"fec_supported,omitempty"`
-	EthtoolError        string   `json:"ethtool_error,omitempty"`
-	Physical            bool     `json:"physical"`
-	PCIAddress          string   `json:"pci_address,omitempty"`
+	Name                string            `json:"name"`
+	State               string            `json:"state"`
+	RXBytes             uint64            `json:"rx_bytes"`
+	TXBytes             uint64            `json:"tx_bytes"`
+	RXBytesPerSec       float64           `json:"rx_bytes_per_second"`
+	TXBytesPerSec       float64           `json:"tx_bytes_per_second"`
+	RXPackets           int64             `json:"rx_packets"`
+	TXPackets           int64             `json:"tx_packets"`
+	RXErrors            int64             `json:"rx_errors"`
+	TXErrors            int64             `json:"tx_errors"`
+	RXDrops             int64             `json:"rx_drops"`
+	TXDrops             int64             `json:"tx_drops"`
+	LinkSpeedMbps       int64             `json:"link_speed_mbps,omitempty"`
+	MTU                 int64             `json:"mtu,omitempty"`
+	RXQueues            int64             `json:"rx_queues,omitempty"`
+	TXQueues            int64             `json:"tx_queues,omitempty"`
+	RXRingSize          int64             `json:"rx_ring_size,omitempty"`
+	TXRingSize          int64             `json:"tx_ring_size,omitempty"`
+	Driver              string            `json:"driver,omitempty"`
+	LinkDuplex          string            `json:"link_duplex,omitempty"`
+	AutoNegotiation     string            `json:"autonegotiation,omitempty"`
+	LinkUp              bool              `json:"link_up,omitempty"`
+	SupportedLinkModes  []string          `json:"supported_link_modes,omitempty"`
+	AdvertisedLinkModes []string          `json:"advertised_link_modes,omitempty"`
+	PeerLinkModes       []string          `json:"peer_link_modes,omitempty"`
+	FECActive           string            `json:"fec_active,omitempty"`
+	FECSupported        string            `json:"fec_supported,omitempty"`
+	MaxRXChannels       int64             `json:"max_rx_channels,omitempty"`
+	MaxTXChannels       int64             `json:"max_tx_channels,omitempty"`
+	MaxCombinedChannels int64             `json:"max_combined_channels,omitempty"`
+	PauseAutoneg        bool              `json:"pause_autoneg,omitempty"`
+	RXPause             bool              `json:"rx_pause,omitempty"`
+	TXPause             bool              `json:"tx_pause,omitempty"`
+	Timestamping        bool              `json:"timestamping,omitempty"`
+	PHCIndex            int64             `json:"phc_index,omitempty"`
+	EthtoolError        string            `json:"ethtool_error,omitempty"`
+	DriverStats         map[string]uint64 `json:"driver_stats,omitempty"`
+	Physical            bool              `json:"physical"`
+	PCIAddress          string            `json:"pci_address,omitempty"`
 }
 
 type Filesystem struct {
@@ -145,6 +154,11 @@ type GPU struct {
 	TemperatureCelsius float64 `json:"temperature_celsius,omitempty"`
 	PowerWatts         float64 `json:"power_watts,omitempty"`
 	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
+	ECCEnabled         bool    `json:"ecc_enabled,omitempty"`
+	ECCCorrected       uint64  `json:"ecc_corrected,omitempty"`
+	ECCUncorrected     uint64  `json:"ecc_uncorrected,omitempty"`
+	MIGEnabled         bool    `json:"mig_enabled,omitempty"`
+	MIGMaxInstances    uint64  `json:"mig_max_instances,omitempty"`
 	NVMLStatus         string  `json:"nvml_status,omitempty"`
 	NVML               bool    `json:"nvml_available"`
 }
@@ -161,37 +175,45 @@ type Virtualization struct {
 }
 
 type VirtualMachine struct {
-	Name                  string        `json:"name"`
-	PID                   int           `json:"pid,omitempty"`
-	ConfiguredVCPUs       int64         `json:"configured_vcpus,omitempty"`
-	ConfiguredMemoryBytes uint64        `json:"configured_memory_bytes,omitempty"`
-	CPUPercent            float64       `json:"cpu_percent,omitempty"`
-	CgroupCPUPercent      float64       `json:"cgroup_cpu_percent,omitempty"`
-	MemoryCurrentBytes    uint64        `json:"memory_current_bytes,omitempty"`
-	MemoryMaxBytes        uint64        `json:"memory_max_bytes,omitempty"`
-	ProcessRSSBytes       uint64        `json:"process_rss_bytes,omitempty"`
-	ReadBytes             uint64        `json:"read_bytes,omitempty"`
-	WriteBytes            uint64        `json:"write_bytes,omitempty"`
-	CgroupPath            string        `json:"cgroup_path,omitempty"`
-	CgroupAvailable       bool          `json:"cgroup_available"`
-	Hugepages             bool          `json:"hugepages"`
-	HugepageBytes         uint64        `json:"hugepage_bytes,omitempty"`
-	NUMANodes             []int         `json:"numa_nodes,omitempty"`
-	BalloonEnabled        bool          `json:"balloon_enabled"`
-	BalloonActualBytes    uint64        `json:"balloon_actual_bytes,omitempty"`
-	BalloonTargetBytes    uint64        `json:"balloon_target_bytes,omitempty"`
-	BalloonReclaimedBytes uint64        `json:"balloon_reclaimed_bytes,omitempty"`
-	BalloonCommittedBytes uint64        `json:"balloon_committed_bytes,omitempty"`
-	BalloonAvailableBytes uint64        `json:"balloon_available_bytes,omitempty"`
-	BalloonReported       bool          `json:"balloon_reported"`
-	BalloonGuestReport    bool          `json:"balloon_guest_report"`
-	BalloonSource         string        `json:"balloon_source,omitempty"`
-	QMPStatus             string        `json:"qmp_status,omitempty"`
-	Disks                 []VirtualDisk `json:"disks,omitempty"`
-	NICs                  []VirtualNIC  `json:"nics,omitempty"`
-	PCIAddresses          []string      `json:"pci_addresses,omitempty"`
-	Running               bool          `json:"running"`
-	Source                string        `json:"source,omitempty"`
+	Name                  string         `json:"name"`
+	PID                   int            `json:"pid,omitempty"`
+	ConfiguredVCPUs       int64          `json:"configured_vcpus,omitempty"`
+	ConfiguredMemoryBytes uint64         `json:"configured_memory_bytes,omitempty"`
+	CPUPercent            float64        `json:"cpu_percent,omitempty"`
+	CgroupCPUPercent      float64        `json:"cgroup_cpu_percent,omitempty"`
+	MemoryCurrentBytes    uint64         `json:"memory_current_bytes,omitempty"`
+	MemoryMaxBytes        uint64         `json:"memory_max_bytes,omitempty"`
+	ProcessRSSBytes       uint64         `json:"process_rss_bytes,omitempty"`
+	ReadBytes             uint64         `json:"read_bytes,omitempty"`
+	WriteBytes            uint64         `json:"write_bytes,omitempty"`
+	CgroupPath            string         `json:"cgroup_path,omitempty"`
+	CgroupAvailable       bool           `json:"cgroup_available"`
+	Hugepages             bool           `json:"hugepages"`
+	HugepageBytes         uint64         `json:"hugepage_bytes,omitempty"`
+	NUMANodes             []int          `json:"numa_nodes,omitempty"`
+	BalloonEnabled        bool           `json:"balloon_enabled"`
+	BalloonActualBytes    uint64         `json:"balloon_actual_bytes,omitempty"`
+	BalloonTargetBytes    uint64         `json:"balloon_target_bytes,omitempty"`
+	BalloonReclaimedBytes uint64         `json:"balloon_reclaimed_bytes,omitempty"`
+	BalloonCommittedBytes uint64         `json:"balloon_committed_bytes,omitempty"`
+	BalloonAvailableBytes uint64         `json:"balloon_available_bytes,omitempty"`
+	BalloonReported       bool           `json:"balloon_reported"`
+	BalloonGuestReport    bool           `json:"balloon_guest_report"`
+	BalloonSource         string         `json:"balloon_source,omitempty"`
+	QMPVersion            string         `json:"qmp_version,omitempty"`
+	QMPBaseMemoryBytes    uint64         `json:"qmp_base_memory_bytes,omitempty"`
+	QMPPluggedMemoryBytes uint64         `json:"qmp_plugged_memory_bytes,omitempty"`
+	QMPVCPUs              int64          `json:"qmp_vcpus,omitempty"`
+	QMPEnabledVCPUs       int64          `json:"qmp_enabled_vcpus,omitempty"`
+	RuntimeAnonHugeBytes  uint64         `json:"runtime_anon_huge_bytes,omitempty"`
+	RuntimeHugetlbBytes   uint64         `json:"runtime_hugetlb_bytes,omitempty"`
+	RuntimeNUMABytes      map[int]uint64 `json:"runtime_numa_bytes,omitempty"`
+	QMPStatus             string         `json:"qmp_status,omitempty"`
+	Disks                 []VirtualDisk  `json:"disks,omitempty"`
+	NICs                  []VirtualNIC   `json:"nics,omitempty"`
+	PCIAddresses          []string       `json:"pci_addresses,omitempty"`
+	Running               bool           `json:"running"`
+	Source                string         `json:"source,omitempty"`
 }
 
 type VirtualDisk struct {

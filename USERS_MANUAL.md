@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.9.1. Hardware Resources Tool is a read-only
+This manual describes release 0.10.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.9.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -161,8 +161,9 @@ Errors and drops are cumulative counters; rising values over repeated reports
 matter more than one historical non-zero value. Zero speed may mean link down
 or unsupported reporting. Empty optional fields mean the device or kernel did
 not expose them. The implementation performs read-only generic-netlink
-ethtool reads and does not send SET, firmware, EEPROM, or cable-test
-operations.
+ethtool and ETHTOOL_G* reads, including channels, pause parameters, and
+timestamping information. It does not send SET, firmware, EEPROM, or
+cable-test operations.
 
 ### Findings
 
@@ -250,9 +251,11 @@ available_bytes, used_percent, and read_only.
 
 networks entries contain name, state, physical, pci_address, driver, traffic
 counters/rates, packets, errors, drops, link_speed_mbps, link_duplex,
-autonegotiation, link_up, mtu, RX/TX queues and rings, supported/advertised/
-peer link modes, FEC fields, and ethtool_error. virtual_network_count is the
-number of filtered virtual/device-less interfaces.
+autonegotiation, link_up, mtu, RX/TX queues and rings, maximum channel counts,
+pause state, hardware timestamping, PHC index, supported/advertised/peer link
+modes, FEC fields, read-only driver_stats, and ethtool_error.
+virtual_network_count is the number of
+filtered virtual/device-less interfaces.
 
 ### PCI and GPU
 
@@ -264,7 +267,8 @@ addresses, PF/VF relationships, BAR totals/count/above-4G, AER statuses,
 SR-IOV total VFs, and Resizable BAR presence.
 
 gpus entries include PCI identity plus name, uuid, framebuffer total/used,
-utilization, temperature, power, nvml_available, and nvml_status. PCI
+utilization, temperature, power, ECC enabled/corrected/uncorrected counts,
+MIG mode and maximum-instance information, nvml_available, and nvml_status. PCI
 discovery is independent of NVML runtime telemetry.
 
 ### Virtualization
@@ -276,10 +280,12 @@ configured overcommit, not proof of failure.
 
 Each virtual_machines entry contains name, pid, source, running, configured
 vCPUs/memory, process and cgroup CPU, process RSS, cgroup current/max/path and
-availability, process/cgroup I/O, hugepages and hugepage_bytes, parsed
-numa_nodes, qmp_status, balloon enabled/reported/guest-report/source flags,
-balloon actual/target/reclaimed/committed/available bytes, and disks, nics,
-and pci_addresses.
+availability, process/cgroup I/O, hugepages and hugepage_bytes, runtime
+anonymous hugepage and hugetlb bytes, per-node runtime numa_maps bytes, parsed
+numa_nodes, QMP version, base/plugged memory, total/enabled vCPU counts,
+qmp_status, balloon enabled/reported/guest-report/source flags, balloon
+actual/target/reclaimed/committed/available bytes, and disks, nics, and
+pci_addresses.
 
 VM nics include guest type/source/target/MAC, host bridge/NIC correlation,
 and host RX/TX rates when resolvable. VM PCI addresses identify attachments;
@@ -326,9 +332,7 @@ availability, migration, latency, and data integrity.
 
 ## 8. Current limitations
 
-Not yet implemented are ethtool offload/channel/coalescing/pause/RSS/
-timestamping/statistics reads; NVML ECC/MIG/NVLink telemetry; Redfish/BMC
-inventory; runtime hugepage consumption; /proc/<pid>/numa_maps placement
-analysis; QMP memory-size summary and richer domain metrics; and broad
-vendor-specific validation captures. Use platform-native sources when a field
-is unavailable.
+Not yet implemented are ethtool offload/coalescing/RSS feature decoding and
+some detailed statistics; NVML NVLink and per-instance MIG inventory;
+Redfish/BMC inventory; richer QMP domain statistics; and broad vendor-specific
+validation captures. Use platform-native sources when a field is unavailable.

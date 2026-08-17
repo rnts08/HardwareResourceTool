@@ -63,12 +63,13 @@ The base collector uses `/sys/class/net`, but the primary NIC list is limited
 to interfaces with a sysfs `device` backing path; bridges, veth, tap, loopback,
 and other device-less virtual interfaces are counted separately rather than
 reported as physical hardware. Read-only ethtool ioctl data supplies ring
-sizes, and the Linux ethtool generic-netlink `*_GET` operations supply link state,
+sizes, channels, pause state, and timestamping/PHC information, and the Linux
+ethtool generic-netlink `*_GET` operations supply link state,
 duplex/autonegotiation, interface/peer link modes, and FEC. Driver identity is
 read from the PCI sysfs driver link. Unsupported virtual devices retain an
-error string instead of failing the snapshot. Feature bitsets, channels,
-coalescing, pause, RSS, timestamping, and detailed statistics remain in the
-technical backlog. No `SET` operation or external command is allowed.
+error string instead of failing the snapshot. Feature bitsets, coalescing, RSS,
+and detailed statistics remain in the technical backlog. No `SET` operation or
+external command is allowed.
 
 Reference: <https://cdn.kernel.org/doc/html/latest/networking/ethtool-netlink.html>
 
@@ -84,9 +85,12 @@ process CPU and `/proc/<pid>/io` are used as fallbacks. Disk, NIC, and PCI
 host-device attachments are retained, and bridge members are mapped back to
 physical NICs where possible. Libvirt hugepage declarations and NUMA nodesets
 are retained, and nodeset exclusions are validated against the host node count.
+For running QEMU processes, `smaps_rollup` contributes anonymous hugepage and
+hugetlb totals, while `numa_maps` contributes host-node resident page totals.
 QMP access is bounded and uses only protocol negotiation plus `query-status`,
-`query-balloon`, and the optional QEMU 8.2+ `query-hv-balloon-status-report`;
-no guest or host mutation is performed.
+`query-balloon`, optional QEMU 8.2+ `query-hv-balloon-status-report`,
+`query-version`, `query-memory-size-summary`, and `query-cpus-fast`; no guest
+or host mutation is performed.
 
 `query-balloon.actual` is QEMU's logical VM size after ballooning, not resident
 host memory. The newer Hyper-V report is separate: `committed` includes guest

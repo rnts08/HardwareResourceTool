@@ -200,6 +200,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 					vm.ReadBytes, vm.WriteBytes = readBytes, writeBytes
 				}
 			}
+			vm.RuntimeAnonHugeBytes, vm.RuntimeHugetlbBytes, vm.RuntimeNUMABytes = readProcessRuntimeMemory(c.procRoot, vm.PID)
 		}
 		for j := range vm.NICs {
 			vm.NICs[j].HostNetwork = resolveVirtualNICHost(c.sysRoot, vm.NICs[j], s.Networks)
@@ -224,6 +225,56 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 	return nil
 }
 
+// readProcessRuntimeMemory reads only proc accounting files. smaps_rollup
+// reports aggregate hugepage classes in KiB; numa_maps reports per-node page
+// counts, which are converted using the host page size. Failure to read either
+// file leaves that portion unknown rather than manufacturing zero usage.
+func readProcessRuntimeMemory(procRoot string, pid int) (uint64, uint64, map[int]uint64) {
+	var anonHuge, hugetlb uint64
+	if lines, err := readLines(filepath.Join(procRoot, strconv.Itoa(pid), "smaps_rollup")); err == nil {
+		for _, line := range lines {
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			value, err := strconv.ParseUint(fields[1], 10, 64)
+			if err != nil {
+				continue
+			}
+			switch strings.TrimSuffix(fields[0], ":") {
+			case "AnonHugePages":
+				anonHuge += value * 1024
+			case "Hugetlb", "Shared_Hugetlb", "Private_Hugetlb":
+				hugetlb += value * 1024
+			}
+		}
+	}
+	numa := map[int]uint64{}
+	if lines, err := readLines(filepath.Join(procRoot, strconv.Itoa(pid), "numa_maps")); err == nil {
+		pageSize := uint64(os.Getpagesize())
+		for _, line := range lines {
+			for _, field := range strings.Fields(line) {
+				if !strings.HasPrefix(field, "N") || !strings.Contains(field, "=") {
+					continue
+				}
+				parts := strings.SplitN(strings.TrimPrefix(field, "N"), "=", 2)
+				if len(parts) != 2 {
+					continue
+				}
+				node, nodeErr := strconv.Atoi(parts[0])
+				pages, pageErr := strconv.ParseUint(parts[1], 10, 64)
+				if nodeErr == nil && pageErr == nil {
+					numa[node] += pages * pageSize
+				}
+			}
+		}
+	}
+	if len(numa) == 0 {
+		numa = nil
+	}
+	return anonHuge, hugetlb, numa
+}
+
 func applyQMP(vm *model.VirtualMachine, path string) {
 	data, ok := queryQMP(path)
 	if !ok {
@@ -240,6 +291,11 @@ func applyQMP(vm *model.VirtualMachine, path string) {
 	vm.BalloonReported = data.reported
 	vm.BalloonGuestReport = data.guestReport
 	vm.BalloonSource = data.source
+	vm.QMPVersion = data.version
+	vm.QMPBaseMemoryBytes = data.baseMemory
+	vm.QMPPluggedMemoryBytes = data.pluggedMemory
+	vm.QMPVCPUs = data.vcpus
+	vm.QMPEnabledVCPUs = data.enabledVCPUs
 	vm.BalloonEnabled = data.reported
 }
 

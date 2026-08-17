@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.9.1` (`v0.9.1`). It is focused on Linux hosts,
+The current release is `0.10.0` (`v0.10.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -23,6 +23,8 @@ For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   `/sys`, cgroups, and debug filesystems filtered out.
 - Physical NIC throughput, link state, speed, duplex, autonegotiation, driver,
   FEC, supported/advertised/peer modes, queues, rings, errors, and drops.
+  Additional read-only GET telemetry includes maximum channel counts, pause
+  state, hardware timestamping availability, and PHC index.
   Virtual or device-less interfaces are counted separately rather than being
   presented as physical hardware.
 - PCI inventory and read-only capability parsing, negotiated versus maximum
@@ -31,11 +33,16 @@ For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
 - SMBIOS memory-device inventory and EDAC corrected/uncorrected counters when
   Linux exposes them.
 - NVIDIA PCI identity plus optional dynamically loaded NVML identity, UUID,
-  framebuffer memory, utilization, temperature, and power telemetry.
+  framebuffer memory, utilization, temperature, power, ECC, and MIG-mode
+  telemetry.
 - KVM/QEMU discovery from `/sys`, libvirt XML, `/proc`, cgroup v2, and bounded
   read-only QMP queries. VM data separates configured allocation, QEMU host
   process usage, cgroup usage, balloon values, guest-reported memory, device
   attachments, and physical NIC correlation.
+- Runtime QEMU process memory placement from `smaps_rollup` and `numa_maps`,
+  including anonymous hugepages, hugetlb pages, and per-host-node residency.
+- Read-only QMP QEMU version, memory-size summary, and vCPU state counts when
+  the running QEMU exposes those commands.
 - Advisory findings with severity, evidence, and recommendations.
 
 Unavailable kernel files, unsupported devices, absent NVML libraries, missing
@@ -91,7 +98,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.9.1 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.10.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -196,9 +203,8 @@ and the virtualization platform before applying changes. The tool never runs
 remediation commands such as `sysctl`, `ethtool --set-*`, `numactl`, `virsh`,
 QMP mutating commands, or service restarts.
 
-The current backlog still includes deeper ethtool offload/channel/coalescing/
-RSS/statistics reads, ECC/MIG/NVLink telemetry, Redfish inventory, runtime
-hugepage consumption, NUMA runtime placement from `numa_maps`, QMP memory-size
-summary metrics, and broader vendor integration. See
+The current backlog still includes ethtool offload/coalescing/RSS/statistics
+reads, NVML NVLink and per-instance MIG inventory, Redfish inventory, and
+broader vendor integration. See
 [docs/TECHNICAL_BACKLOG.md](docs/TECHNICAL_BACKLOG.md) and
 [docs/HARDWARE_IMPLEMENTATION.md](docs/HARDWARE_IMPLEMENTATION.md).

@@ -20,6 +20,10 @@ typedef nvmlReturn_t (*nvmlGetUtilFn)(nvmlDevice_t, void*);
 typedef nvmlReturn_t (*nvmlGetTempFn)(nvmlDevice_t, int, unsigned int*);
 typedef nvmlReturn_t (*nvmlGetPowerFn)(nvmlDevice_t, unsigned int*);
 typedef nvmlReturn_t (*nvmlGetPciFn)(nvmlDevice_t, void*);
+typedef nvmlReturn_t (*nvmlGetEccModeFn)(nvmlDevice_t, unsigned int*, unsigned int*);
+typedef nvmlReturn_t (*nvmlGetEccErrorsFn)(nvmlDevice_t, unsigned int, unsigned int, unsigned long long*);
+typedef nvmlReturn_t (*nvmlGetMigModeFn)(nvmlDevice_t, unsigned int*, unsigned int*);
+typedef nvmlReturn_t (*nvmlGetMigCountFn)(nvmlDevice_t, unsigned int*);
 
 typedef struct { unsigned long long total, free, used; } hwtMemory;
 typedef struct { unsigned int gpu, memory; } hwtUtilization;
@@ -33,6 +37,11 @@ typedef struct {
     unsigned int utilization;
     unsigned int temperature;
     unsigned int powerMilliwatts;
+    unsigned int eccEnabled;
+    unsigned long long eccCorrected;
+    unsigned long long eccUncorrected;
+    unsigned int migEnabled;
+    unsigned int migInstances;
 } hwtNvmlGPU;
 
 static void hwtError(char* error, unsigned int length, const char* prefix, int code) {
@@ -58,6 +67,10 @@ static unsigned int hwtNvmlCollect(hwtNvmlGPU* output, unsigned int capacity, ch
     nvmlGetPowerFn getPower = (nvmlGetPowerFn)dlsym(library, "nvmlDeviceGetPowerUsage");
     nvmlGetPciFn getPci = (nvmlGetPciFn)dlsym(library, "nvmlDeviceGetPciInfo_v3");
     if (!getPci) getPci = (nvmlGetPciFn)dlsym(library, "nvmlDeviceGetPciInfo_v2");
+    nvmlGetEccModeFn getEccMode = (nvmlGetEccModeFn)dlsym(library, "nvmlDeviceGetEccMode");
+    nvmlGetEccErrorsFn getEccErrors = (nvmlGetEccErrorsFn)dlsym(library, "nvmlDeviceGetTotalEccErrors");
+    nvmlGetMigModeFn getMigMode = (nvmlGetMigModeFn)dlsym(library, "nvmlDeviceGetMigMode");
+    nvmlGetMigCountFn getMigCount = (nvmlGetMigCountFn)dlsym(library, "nvmlDeviceGetMaxMigDeviceCount");
     if (!init || !shutdown || !getCount || !getHandle || !getPci) {
         if (errorLength > 0) snprintf(error, errorLength, "NVML required symbols unavailable");
         dlclose(library);
@@ -99,6 +112,21 @@ static unsigned int hwtNvmlCollect(hwtNvmlGPU* output, unsigned int capacity, ch
         if (getUtil && getUtil(device, &utilization) == 0) gpu->utilization = utilization.gpu;
         if (getTemp) getTemp(device, 0, &gpu->temperature);
         if (getPower) getPower(device, &gpu->powerMilliwatts);
+        if (getEccMode) {
+            unsigned int current = 0, pending = 0;
+            if (getEccMode(device, &current, &pending) == 0) gpu->eccEnabled = current != 0 || pending != 0;
+        }
+        if (getEccErrors) {
+            // NVML memory error type: corrected=0, uncorrected=1;
+            // aggregate counter type: 1. Both calls are read-only.
+            getEccErrors(device, 0, 1, &gpu->eccCorrected);
+            getEccErrors(device, 1, 1, &gpu->eccUncorrected);
+        }
+        if (getMigMode) {
+            unsigned int current = 0, pending = 0;
+            if (getMigMode(device, &current, &pending) == 0) gpu->migEnabled = current != 0 || pending != 0;
+        }
+        if (getMigCount) getMigCount(device, &gpu->migInstances);
     }
     shutdown();
     dlclose(library);
@@ -118,6 +146,11 @@ type nvmlGPUData struct {
 	Utilization             float64
 	Temperature             float64
 	PowerWatts              float64
+	ECCEnabled              bool
+	ECCCorrected            uint64
+	ECCUncorrected          uint64
+	MIGEnabled              bool
+	MIGMaxInstances         uint64
 }
 
 func collectNVML() ([]nvmlGPUData, error) {
@@ -142,6 +175,8 @@ func collectNVML() ([]nvmlGPUData, error) {
 			MemoryTotal: uint64(gpu.memoryTotal), MemoryUsed: uint64(gpu.memoryUsed),
 			Utilization: float64(gpu.utilization), Temperature: float64(gpu.temperature),
 			PowerWatts: float64(gpu.powerMilliwatts) / 1000,
+			ECCEnabled: bool(gpu.eccEnabled != 0), ECCCorrected: uint64(gpu.eccCorrected), ECCUncorrected: uint64(gpu.eccUncorrected),
+			MIGEnabled: bool(gpu.migEnabled != 0), MIGMaxInstances: uint64(gpu.migInstances),
 		})
 	}
 	return result, nil

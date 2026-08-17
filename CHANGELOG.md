@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.0 — 2026-08-17
+
+- Added read-only ethtool channel, pause, hardware timestamping/PHC, and
+  driver-statistics collection.
+- Added optional NVML ECC counters, ECC mode, MIG mode, and maximum MIG device
+  count telemetry.
+- Added QMP version, memory-size summary, and enabled/total vCPU metrics.
+- Added QEMU `smaps_rollup` anonymous hugepage/hugetlb totals and per-node
+  `numa_maps` residency accounting with NUMA placement findings.
+- Expanded text/TUI output, JSON fields, tests, and hardware documentation.
+
 ## 0.9.1 — 2026-08-17
 
 - Replaced the short README usage notes with Linux build, command, TUI, output,

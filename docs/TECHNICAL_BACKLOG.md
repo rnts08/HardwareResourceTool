@@ -58,8 +58,9 @@ path could not be determined.
 
 ## M0.2.8 — hardware telemetry enrichment
 
-Status: core optional NVML enrichment implemented in `0.5.0`; ECC, MIG, NVLink,
-and Redfish inventory remain open.
+Status: core optional NVML enrichment implemented in `0.5.0`; read-only ECC
+and MIG-mode telemetry implemented in `0.10.0`; per-instance MIG, NVLink, and
+Redfish inventory remain open.
 
 - Add optional dynamically loaded NVIDIA NVML collector.
 - Collect GPU UUID/name, framebuffer memory, utilization, temperature, power,
@@ -85,11 +86,13 @@ validation implemented in `0.9.0`.
 - Add conservative CPU/memory overcommit findings; do not represent guest
   configured memory as actual resident guest memory.
 
-Remaining: QMP memory-size summary and runtime hugepage consumption, NUMA
-runtime placement verification from `/proc/<pid>/numa_maps`, and richer QMP
-metrics. The QEMU 8.2+ Hyper-V balloon report is guest-reported and is kept
-separate from host cgroup/RSS values. QMP remains optional because the
-collector must not send mutating commands or assume socket access.
+QMP memory-size summary and vCPU state counts, plus runtime `smaps_rollup`
+hugepage and `/proc/<pid>/numa_maps` placement data, are now implemented as
+optional read-only metrics in `0.10.0`. Remaining work is richer QMP statistics and
+broader runtime placement correlation. The QEMU 8.2+ Hyper-V balloon report is
+guest-reported and is kept separate from host cgroup/RSS values. QMP remains
+optional because the collector must not send mutating commands or assume
+socket access.
 
 ## Cross-cutting completion work
 

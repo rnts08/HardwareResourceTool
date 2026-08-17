@@ -94,8 +94,8 @@ func TestDiscoverProxmoxVMs(t *testing.T) {
 
 func TestMarkGPUPassthrough(t *testing.T) {
 	snapshot := model.Snapshot{
-		PCI: []model.PCIDevice{{Address: "0000:01:00.0", Driver: "vfio-pci"}},
-		GPUs: []model.GPU{{Address: "0000:01:00.0"}},
+		PCI:            []model.PCIDevice{{Address: "0000:01:00.0", Driver: "vfio-pci"}},
+		GPUs:           []model.GPU{{Address: "0000:01:00.0"}},
 		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "guest", PCIAddresses: []string{"0000:01:00.0"}}}},
 	}
 	markGPUPassthrough(&snapshot)

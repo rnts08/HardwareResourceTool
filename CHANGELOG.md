@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.5 — 2026-08-17
+
+- Added bounded, read-only classification of existing kernel/system log tails
+  for OOM, I/O, PCIe/AER, hardware/EDAC/MCE, NVIDIA Xid, storage-reset, and
+  link-failure events.
+- Exposed event counts and a maximum of twelve recent matching lines in JSON,
+  text, and TUI output.
+- Avoided `/proc/kmsg`, `/dev/kmsg`, `dmesg`, journal traversal, and any log
+  mutation; missing or inaccessible logs remain non-fatal.
+- Added bounded log fixture coverage and documentation of passive collection.
+
 ## 0.10.4 — 2026-08-17
 
 - Detect NVIDIA GPUs bound to `vfio-pci`/`pci-stub` or assigned through

@@ -265,6 +265,18 @@ type SystemSettings struct {
 	MaxStack     uint64            `json:"max_stack_bytes"`
 	Sysctls      map[string]string `json:"sysctls,omitempty"`
 	HostLimits   Limits            `json:"host_limits"`
+	KernelEvents KernelEvents      `json:"kernel_events"`
+}
+
+type KernelEvents struct {
+	OOM           uint64   `json:"oom_events,omitempty"`
+	IOErrors      uint64   `json:"io_errors,omitempty"`
+	PCIeErrors    uint64   `json:"pcie_errors,omitempty"`
+	Hardware      uint64   `json:"hardware_errors,omitempty"`
+	NVIDIA        uint64   `json:"nvidia_errors,omitempty"`
+	StorageResets uint64   `json:"storage_resets,omitempty"`
+	LinkFailures  uint64   `json:"link_failures,omitempty"`
+	Recent        []string `json:"recent,omitempty"`
 }
 
 type Limits struct {

@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.4. Hardware Resources Tool is a read-only
+This manual describes release 0.10.5. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.4 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.10.5 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -340,8 +340,11 @@ from Linux node numastat remote/foreign counters and is a locality signal, not
 a direct latency measurement.
 
 system contains cpu_governor, THP policy, swappiness, current process limits,
-PID 1 host_limits, and selected sysctls for overcommit, dirty-page ratios, and
-the NMI watchdog. collector_errors lists non-fatal source failures.
+PID 1 host_limits, selected sysctls for overcommit, dirty-page ratios, and the
+NMI watchdog, plus bounded kernel_events counts and recent matching log lines.
+The event scan reads only the tails of existing text logs under `/var/log`; it
+does not invoke `dmesg`, read kernel message streams, traverse the journal, or
+write anything. collector_errors lists non-fatal source failures.
 
 ## 7. Applying findings safely
 

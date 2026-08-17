@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.4` (`v0.10.4`). It is focused on Linux hosts,
+The current release is `0.10.5` (`v0.10.5`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -48,6 +48,10 @@ For the complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
 - Read-only QMP QEMU version, memory-size summary, and vCPU state counts when
   the running QEMU exposes those commands.
 - Advisory findings with severity, evidence, and recommendations.
+- Bounded read-only kernel/system log event summaries for OOM, I/O, PCIe/AER,
+  EDAC/MCE, NVIDIA Xid, storage resets, and link failures. Only the tails of
+  existing `/var/log/kern.log`, `/var/log/syslog`, and `/var/log/messages`
+  are read; missing logs are ignored.
 
 Unavailable kernel files, unsupported devices, absent NVML libraries, missing
 libvirt XML, inaccessible cgroups, and unavailable QMP sockets are treated as
@@ -70,6 +74,8 @@ Build and run on Linux with:
 
 The collector uses direct reads and Linux APIs. It does not shell out to
 `virsh`, `ethtool`, `lspci`, `numactl`, `iostat`, or other diagnostic tools.
+It does not read `/proc/kmsg` or `/dev/kmsg`, invoke `dmesg`, traverse the
+journal, or write to logs.
 
 ## Build on Linux
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,7 @@ type Collector struct {
 	procRoot      string
 	sysRoot       string
 	etcRoot       string
+	logRoot       string
 	prev          *rawCounters
 	prevAt        time.Time
 	hardware      model.Snapshot
@@ -39,7 +41,7 @@ type diskCounter struct{ reads, sectorsRead, writes, sectorsWritten, inFlight ui
 type networkCounter struct{ rxBytes, txBytes, rxPackets, txPackets, rxErrors, txErrors, rxDrops, txDrops uint64 }
 
 func New() *Collector {
-	return &Collector{procRoot: "/proc", sysRoot: "/sys", etcRoot: "/etc"}
+	return &Collector{procRoot: "/proc", sysRoot: "/sys", etcRoot: "/etc", logRoot: "/var/log"}
 }
 
 func (c *Collector) Snapshot() model.Snapshot {
@@ -389,6 +391,7 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 	if len(s.System.Sysctls) == 0 {
 		s.System.Sysctls = nil
 	}
+	s.System.KernelEvents = collectKernelEvents(c.logRoot)
 	governors := map[string]bool{}
 	for _, path := range glob(filepath.Join(c.sysRoot, "devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
 		if data, err := os.ReadFile(path); err == nil {
@@ -428,6 +431,108 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 		return errors.Join(errors.New("system settings"), errors.Join(toErrors(errs)...))
 	}
 	return nil
+}
+
+const maxLogTailBytes = 256 * 1024
+
+func collectKernelEvents(logRoot string) model.KernelEvents {
+	if logRoot == "" {
+		logRoot = "/var/log"
+	}
+	result := model.KernelEvents{}
+	seen := map[string]bool{}
+	for _, path := range []string{filepath.Join(logRoot, "kern.log"), filepath.Join(logRoot, "syslog"), filepath.Join(logRoot, "messages")} {
+		data, err := readLogTail(path, maxLogTailBytes)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || seen[line] {
+				continue
+			}
+			seen[line] = true
+			categories := classifyKernelEvents(line)
+			if len(categories) == 0 {
+				continue
+			}
+			for _, category := range categories {
+				switch category {
+				case "oom":
+					result.OOM++
+				case "io":
+					result.IOErrors++
+				case "pcie":
+					result.PCIeErrors++
+				case "hardware":
+					result.Hardware++
+				case "nvidia":
+					result.NVIDIA++
+				case "storage":
+					result.StorageResets++
+				case "link":
+					result.LinkFailures++
+				}
+			}
+			if len(result.Recent) < 12 {
+				if len(line) > 240 {
+					line = line[:240]
+				}
+				result.Recent = append(result.Recent, line)
+			}
+		}
+	}
+	if len(result.Recent) == 0 {
+		result.Recent = nil
+	}
+	return result
+}
+
+func readLogTail(path string, limit int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	start := int64(0)
+	if info.Size() > limit {
+		start = info.Size() - limit
+	}
+	if _, err := file.Seek(start, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(io.LimitReader(file, limit))
+}
+
+func classifyKernelEvents(line string) []string {
+	value := strings.ToLower(line)
+	categories := []string{}
+	if strings.Contains(value, "out of memory") || strings.Contains(value, "oom-kill") || strings.Contains(value, "oom killer") || strings.Contains(value, "killed process") {
+		categories = append(categories, "oom")
+	}
+	if strings.Contains(value, "aer:") || strings.Contains(value, "pcie bus error") || strings.Contains(value, "uncorrected error received") {
+		categories = append(categories, "pcie")
+	}
+	if strings.Contains(value, "nvrm: xid") || strings.Contains(value, "nvidia") && strings.Contains(value, "xid") {
+		categories = append(categories, "nvidia")
+	}
+	if strings.Contains(value, "machine check") || strings.Contains(value, "mce:") || strings.Contains(value, "edac") || strings.Contains(value, "hardware error") {
+		categories = append(categories, "hardware")
+	}
+	if strings.Contains(value, "nvme") && (strings.Contains(value, "reset") || strings.Contains(value, "timeout")) || strings.Contains(value, "reset controller") || strings.Contains(value, "ata") && strings.Contains(value, "reset") {
+		categories = append(categories, "storage")
+	}
+	if strings.Contains(value, "i/o error") || strings.Contains(value, "blk_update_request") || strings.Contains(value, "buffer i/o error") {
+		categories = append(categories, "io")
+	}
+	if strings.Contains(value, "link is down") || strings.Contains(value, "link down") || strings.Contains(value, "carrier lost") {
+		categories = append(categories, "link")
+	}
+	return categories
 }
 
 func readLimits(path string) (model.Limits, error) {

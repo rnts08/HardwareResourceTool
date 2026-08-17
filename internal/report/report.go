@@ -39,6 +39,12 @@ func WriteText(w io.Writer, result model.Report) error {
 	fmt.Fprintf(w, "CPU: %.1f%% user, %.1f%% system, %.1f%% iowait, %.1f%% idle; load %.2f/%.2f/%.2f\n", result.Snapshot.CPU.UserPercent, result.Snapshot.CPU.SystemPercent, result.Snapshot.CPU.IOWaitPercent, result.Snapshot.CPU.IdlePercent, result.Snapshot.CPU.Load1, result.Snapshot.CPU.Load5, result.Snapshot.CPU.Load15)
 	fmt.Fprintf(w, "Memory: %.1f%% used, %.1f GiB available\n", result.Snapshot.Memory.UsedPercent, float64(result.Snapshot.Memory.AvailableBytes)/(1024*1024*1024))
 	fmt.Fprintf(w, "System: governor %q, THP %q, swappiness %d, NUMA nodes %d, remote events %d/s\n", result.Snapshot.System.CPUGovernor, result.Snapshot.System.THP, result.Snapshot.System.Swappiness, result.Snapshot.NUMA.Nodes, result.Snapshot.NUMA.RemoteEvents)
+	if events := result.Snapshot.System.KernelEvents; len(events.Recent) > 0 || events.OOM+events.IOErrors+events.PCIeErrors+events.Hardware+events.NVIDIA+events.StorageResets+events.LinkFailures > 0 {
+		fmt.Fprintf(w, "Kernel events: OOM %d, I/O %d, PCIe %d, hardware %d, NVIDIA %d, storage resets %d, link failures %d\n", events.OOM, events.IOErrors, events.PCIeErrors, events.Hardware, events.NVIDIA, events.StorageResets, events.LinkFailures)
+		for _, event := range events.Recent {
+			fmt.Fprintf(w, "  Kernel event: %s\n", event)
+		}
+	}
 	if result.Snapshot.Virtualization.QEMUDetected || result.Snapshot.Virtualization.KVMAvailable || len(result.Snapshot.Virtualization.VirtualMachines) > 0 {
 		fmt.Fprintf(w, "Virtualization: %s, VMs %d, allocated vCPU %d (%.2fx), memory %.1f GiB (%.2fx)\n", result.Snapshot.Virtualization.Hypervisor, len(result.Snapshot.Virtualization.VirtualMachines), result.Snapshot.Virtualization.AllocatedVCPUs, result.Snapshot.Virtualization.VCPUOvercommitRatio, float64(result.Snapshot.Virtualization.AllocatedMemoryBytes)/(1024*1024*1024), result.Snapshot.Virtualization.MemoryOvercommitRatio)
 		for _, vm := range result.Snapshot.Virtualization.VirtualMachines {

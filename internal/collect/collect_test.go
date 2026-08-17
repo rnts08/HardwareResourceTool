@@ -165,6 +165,15 @@ func TestCollectSystemReadsSelectedSysctls(t *testing.T) {
 	}
 }
 
+func TestCollectKernelEventsIsBoundedAndClassified(t *testing.T) {
+	logs := t.TempDir()
+	writeFixture(t, logs, "kern.log", "Jan 1 kernel: Out of memory: Killed process 123\nJan 1 nvme nvme0: I/O error, reset controller\nJan 1 pcieport 0000:00:1c.0: AER: Corrected error received\nJan 1 NVRM: Xid (79)\n")
+	events := collectKernelEvents(logs)
+	if events.OOM != 1 || events.IOErrors != 1 || events.StorageResets != 1 || events.PCIeErrors != 1 || events.NVIDIA != 1 || len(events.Recent) != 4 {
+		t.Fatalf("unexpected kernel events: %#v", events)
+	}
+}
+
 func TestParseSMBIOSMemoryDevice(t *testing.T) {
 	formatted := make([]byte, 0x22)
 	formatted[0] = 17

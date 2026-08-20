@@ -205,3 +205,98 @@ clear availability state, and no external `sensors` process is executed.
 - Add performance benchmarks for one-second sampling and bound all allocations/history.
 - Add release build metadata and a reproducible release command.
 - Keep all collectors read-only and update README, WORKFILE, and changelog every milestone.
+
+## Release sequencing plan
+
+Remaining backlog work, ordered by dependency and risk so each release is
+testable and self-contained. Every release: bump `VERSION` in the Makefile,
+run `make check` and `go test -race ./...`, update README, USERS_MANUAL, and
+CHANGELOG, then commit as `release: <version> <summary>` and push. Collection
+performance lands first because the TUI depth items are only usable on large
+hosts when a snapshot is cheap.
+
+### 0.12.0 — collection performance (prereq for TUI depth)
+
+- Throttle heavy per-snapshot telemetry (QMP queries, ethtool netlink,
+  kernel-log tails, per-VM `numa_maps`/`smaps_rollup`) to every Nth snapshot
+  and cache static ethtool metadata, in the TUI and in `report`/`check`.
+- Report kernel events as per-interval deltas rather than cumulative totals in
+  live views.
+- Surface per-VM availability when QMP/cgroup telemetry is unavailable instead
+  of silently dropping fields.
+- Add one-second-sampling performance benchmarks and bound allocations/history.
+
+Acceptance: a large-host snapshot completes within one interval; benchmarks
+show the throttled path is faster; VM rows state what is unknown.
+
+### 0.13.0 — TUI interaction depth
+
+- Add a focused detail pane for devices and VMs (selected item expands to show
+  balloon/QMP/disks/NICs/NUMA breakdown) instead of one enormous line per item.
+- Add mouse tab clicks alongside the existing wheel scrolling.
+- Add a top CPU/memory consumers view (per-process, including which QEMU
+  process is hot).
+
+Acceptance: an operator can select a VM or device, see its full breakdown, and
+jump straight to the hottest processes without reading JSON.
+
+### 0.14.0 — historical comparison
+
+- Add capture-to-capture comparison for two `report --json` outputs, or longer
+  per-tab history, for before/after maintenance and migration reviews.
+
+Acceptance: comparing two captures reports changed findings and rate deltas
+per resource category.
+
+### 0.15.0 — thermal completion
+
+- Read hwmon power/energy sensors from the same devices that expose
+  temperature and fans.
+- Correlate thermal sensors with the existing PCI/NUMA/GPU inventory where
+  possible.
+
+Acceptance: JSON/text/TUI expose power/energy alongside temperature, and GPU
+temperature merges with the GPU inventory.
+
+### 0.16.0 — NIC metadata depth
+
+- Read active/wanted/hardware/no-change feature bitsets using `STRSET_GET`
+  names, plus coalescing and RSS GET families.
+- Read firmware, link-info port, and PHY details where the driver exposes them.
+- Never send `*_SET`/`*_ACT` or mutating operations; keep virtual interfaces
+  valid.
+
+Acceptance: JSON contains stable feature/coalescing/RSS fields and per-interface
+error state without shelling out to `ethtool`.
+
+### 0.17.0 — PCIe follow-up
+
+- Deeper BAR/resource semantics (resource windows, ROM, prefetch) and broader
+  NUMA/isolation findings beyond the current downgraded-link and path checks.
+
+Acceptance: findings distinguish BAR/resource limits from link limits and cover
+cross-NUMA and isolation hazards with conservative evidence.
+
+### 0.18.0 — GPU enrichment
+
+- Per-instance MIG inventory and NVLink topology/bandwidth from NVML, merged
+  with the existing PCI identity and passthrough state.
+
+Acceptance: absent NVML still yields PCI identity with explicit availability;
+with NVML, per-instance MIG and NVLink appear in JSON/text/TUI.
+
+### 0.19.0 — QEMU depth
+
+- Richer read-only QMP statistics (e.g. block/io-stats where non-mutating) and
+  broader runtime placement correlation against host NUMA and hugepage state.
+
+Acceptance: VM rows gain the extra QMP statistics and placement correlation
+only when the running QEMU exposes them; unknown stays unknown.
+
+### 0.20.0 — optional Redfish inventory
+
+- Optional Redfish adapter for processors, memory, PCIe devices, network
+  adapters, ports, and health metrics, kept separate from local collection.
+
+Acceptance: absent BMC credentials or network produce explicit availability
+state and no crash; local collection works without any BMC access.

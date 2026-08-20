@@ -78,6 +78,13 @@ type Network struct {
 	RXRingSize          int64             `json:"rx_ring_size,omitempty"`
 	TXRingSize          int64             `json:"tx_ring_size,omitempty"`
 	Driver              string            `json:"driver,omitempty"`
+	DriverVersion       string            `json:"driver_version,omitempty"`
+	FWVersion           string            `json:"firmware_version,omitempty"`
+	BusInfo             string            `json:"bus_info,omitempty"`
+	LinkPort            string            `json:"link_port,omitempty"`
+	Transceiver         string            `json:"transceiver,omitempty"`
+	PHYAddress          int64             `json:"phy_address,omitempty"`
+	TPMDIX              string            `json:"tp_mdix,omitempty"`
 	LinkDuplex          string            `json:"link_duplex,omitempty"`
 	AutoNegotiation     string            `json:"autonegotiation,omitempty"`
 	LinkUp              bool              `json:"link_up,omitempty"`
@@ -94,6 +101,19 @@ type Network struct {
 	TXPause             bool              `json:"tx_pause,omitempty"`
 	Timestamping        bool              `json:"timestamping,omitempty"`
 	PHCIndex            int64             `json:"phc_index,omitempty"`
+	FeaturesActive      []string          `json:"features_active,omitempty"`
+	FeaturesWanted      []string          `json:"features_wanted,omitempty"`
+	FeaturesHardware    []string          `json:"features_hardware,omitempty"`
+	FeaturesNoChange    []string          `json:"features_no_change,omitempty"`
+	CoalesceRXUsecs     int64             `json:"coalesce_rx_usecs,omitempty"`
+	CoalesceTXUsecs     int64             `json:"coalesce_tx_usecs,omitempty"`
+	CoalesceRXMaxFrames int64             `json:"coalesce_rx_max_frames,omitempty"`
+	CoalesceTXMaxFrames int64             `json:"coalesce_tx_max_frames,omitempty"`
+	CoalesceAdaptiveRX  bool              `json:"coalesce_adaptive_rx,omitempty"`
+	CoalesceAdaptiveTX  bool              `json:"coalesce_adaptive_tx,omitempty"`
+	RSSHashFunc         string            `json:"rss_hash_func,omitempty"`
+	RSSIndirSize        int64             `json:"rss_indirection_size,omitempty"`
+	RSSKeySize          int64             `json:"rss_key_size,omitempty"`
 	EthtoolError        string            `json:"ethtool_error,omitempty"`
 	DriverStats         map[string]uint64 `json:"driver_stats,omitempty"`
 	Physical            bool              `json:"physical"`

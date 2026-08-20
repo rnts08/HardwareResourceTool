@@ -25,9 +25,11 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   Runtime mounts such as `/run`, `/dev/shm`, `/var/lib/docker`, overlays,
   snap filesystems, pseudo-filesystems, and removable USB storage are filtered.
 - Physical NIC throughput, link state, speed, duplex, autonegotiation, driver,
+  driver/firmware/bus versions, link port, PHY address, transceiver,
   FEC, supported/advertised/peer modes, queues, rings, errors, and drops.
   Additional read-only GET telemetry includes maximum channel counts, pause
-  state, hardware timestamping availability, and PHC index.
+  state, hardware timestamping availability, PHC index, hardware/wanted/active
+  feature bitsets, coalescing parameters, and RSS hash configuration.
   Virtual or device-less interfaces are counted separately rather than being
   presented as physical hardware.
 - PCI inventory and read-only capability parsing, negotiated versus maximum

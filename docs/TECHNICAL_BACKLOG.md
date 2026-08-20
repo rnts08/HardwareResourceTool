@@ -258,7 +258,7 @@ per resource category.
 Acceptance: JSON/text/TUI expose power/energy alongside temperature, and GPU
 temperature merges with the GPU inventory.
 
-### 0.16.0 — NIC metadata depth
+### 0.16.0 — NIC metadata depth ✅ shipped in 0.16.0
 
 - Read active/wanted/hardware/no-change feature bitsets using `STRSET_GET`
   names, plus coalescing and RSS GET families.
@@ -268,6 +268,10 @@ temperature merges with the GPU inventory.
 
 Acceptance: JSON contains stable feature/coalescing/RSS fields and per-interface
 error state without shelling out to `ethtool`.
+
+Note: `mdlayher/ethtool` (v0.4.1 and v0.6.1) exposes no Features/Coalesce/RSS
+families, so these were implemented as read-only `ETHTOOL_G*` ioctls
+(`GDRVINFO`, `GSET`, `GSSET_INFO`/`GSTRINGS`/`GFEATURES`, `GCOALESCE`, `GRSSH`).
 
 ### 0.17.0 — PCIe follow-up
 

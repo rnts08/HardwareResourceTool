@@ -2,6 +2,13 @@
 
 package collect
 
+type ethtoolFeatures struct {
+	Active   []string
+	Wanted   []string
+	Hardware []string
+	NoChange []string
+}
+
 type ethtoolData struct {
 	Duplex              string
 	Autoneg             string
@@ -19,6 +26,24 @@ type ethtoolData struct {
 	TXPause             bool
 	Timestamping        bool
 	PHCIndex            int64
+	Driver              string
+	DriverVersion       string
+	FWVersion           string
+	BusInfo             string
+	LinkPort            string
+	Transceiver         string
+	PHYAddress          int64
+	TPMDIX              string
+	Features            ethtoolFeatures
+	CoalesceRXUsecs     int64
+	CoalesceTXUsecs     int64
+	CoalesceRXMaxFrames int64
+	CoalesceTXMaxFrames int64
+	CoalesceAdaptiveRX  bool
+	CoalesceAdaptiveTX  bool
+	RSSHashFunc         string
+	RSSIndirSize        int64
+	RSSKeySize          int64
 	DriverStats         map[string]uint64
 	Error               string
 }

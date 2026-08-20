@@ -25,6 +25,24 @@ type ethtoolData struct {
 	TXPause             bool
 	Timestamping        bool
 	PHCIndex            int64
+	Driver              string
+	DriverVersion       string
+	FWVersion           string
+	BusInfo             string
+	LinkPort            string
+	Transceiver         string
+	PHYAddress          int64
+	TPMDIX              string
+	Features            ethtoolFeatures
+	CoalesceRXUsecs     int64
+	CoalesceTXUsecs     int64
+	CoalesceRXMaxFrames int64
+	CoalesceTXMaxFrames int64
+	CoalesceAdaptiveRX  bool
+	CoalesceAdaptiveTX  bool
+	RSSHashFunc         string
+	RSSIndirSize        int64
+	RSSKeySize          int64
 	DriverStats         map[string]uint64
 	Error               string
 }
@@ -55,6 +73,24 @@ func enrichNetworks(names []string) map[string]ethtoolData {
 		data.TXPause = readOnly.TXPause
 		data.Timestamping = readOnly.Timestamping
 		data.PHCIndex = readOnly.PHCIndex
+		data.Driver = readOnly.Driver
+		data.DriverVersion = readOnly.DriverVersion
+		data.FWVersion = readOnly.FWVersion
+		data.BusInfo = readOnly.BusInfo
+		data.LinkPort = readOnly.LinkPort
+		data.Transceiver = readOnly.Transceiver
+		data.PHYAddress = readOnly.PHYAddress
+		data.TPMDIX = readOnly.TPMDIX
+		data.Features = readOnly.Features
+		data.CoalesceRXUsecs = readOnly.CoalesceRXUsecs
+		data.CoalesceTXUsecs = readOnly.CoalesceTXUsecs
+		data.CoalesceRXMaxFrames = readOnly.CoalesceRXMaxFrames
+		data.CoalesceTXMaxFrames = readOnly.CoalesceTXMaxFrames
+		data.CoalesceAdaptiveRX = readOnly.CoalesceAdaptiveRX
+		data.CoalesceAdaptiveTX = readOnly.CoalesceAdaptiveTX
+		data.RSSHashFunc = readOnly.RSSHashFunc
+		data.RSSIndirSize = readOnly.RSSIndirSize
+		data.RSSKeySize = readOnly.RSSKeySize
 		data.DriverStats = readOnly.DriverStats
 		if readOnly.Error != "" {
 			data.Error = appendEtHToolError(data.Error, "read-only details", fmt.Errorf("%s", readOnly.Error))

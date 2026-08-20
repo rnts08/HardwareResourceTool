@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.16.0 — 2026-08-20
+
+- Deepened per-NIC ethtool metadata using only read-only `ETHTOOL_G*` ioctls:
+  firmware, driver, and bus-info versions from `GDRVINFO`; link port, PHY
+  address, transceiver, and MDI/MDIX state from `GSET`; the hardware, wanted,
+  active, and no-change feature bitsets resolved against the `ETH_SS_FEATURES`
+  name set (`GSSET_INFO`/`GSTRINGS`/`GFEATURES`); the adaptive/non-adaptive
+  coalescing parameters from `GCOALESCE`; and the RSS hash function,
+  indirection-table size, and hash-key size from `GRSSH`. All reads are
+  exercised without ever issuing an `ETHTOOL_S*` mutation.
+- Exposed the new data as `features_active`, `features_wanted`,
+  `features_hardware`, `features_no_change`, `coalesce_*`, `rss_*`,
+  `firmware_version`, `driver_version`, `bus_info`, `link_port`, `phy_address`,
+  `transceiver`, and `tp_mdix` per interface in JSON, in the text report, and
+  on the TUI Networks line.
+
 ## 0.15.0 — 2026-08-20
 
 - Read hwmon power and energy sensors (`powerN_input` in microwatts and

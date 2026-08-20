@@ -213,16 +213,19 @@ separately rather than presented as physical ports.
 
 Rows show interface name, state, PCI address, RX/TX throughput, speed, MTU,
 RX/TX queues, RX/TX ring sizes, errors, and drops. The secondary line shows
-driver, duplex, autonegotiation, FEC, supported/advertised modes, and peer
-mode count.
+driver and driver/firmware versions, bus info, link port, PHY address,
+transceiver, MDI/MDIX, duplex, autonegotiation, FEC, supported/advertised
+modes, and peer mode count. A further line shows hardware/wanted/active/fixed
+feature-bit count, coalescing parameters, and the RSS hash function with
+indirection-table and key sizes.
 
 Errors and drops are cumulative counters; rising values over repeated reports
 matter more than one historical non-zero value. Zero speed may mean link down
 or unsupported reporting. Empty optional fields mean the device or kernel did
 not expose them. The implementation performs read-only generic-netlink
-ethtool and ETHTOOL_G* reads, including channels, pause parameters, and
-timestamping information. It does not send SET, firmware, EEPROM, or
-cable-test operations.
+ethtool and ETHTOOL_G* reads, including channels, pause parameters,
+timestamping, feature bitsets, coalescing, RSS, and driver-info strings. It
+does not send SET, firmware-update, EEPROM, or cable-test operations.
 
 ### Findings
 
@@ -348,11 +351,15 @@ reads_per_second, writes_per_second, throughput rates, and in_flight.
 filesystems entries contain device, mount_point, type, total_bytes,
 available_bytes, used_percent, and read_only.
 
-networks entries contain name, state, physical, pci_address, driver, traffic
-counters/rates, packets, errors, drops, link_speed_mbps, link_duplex,
-autonegotiation, link_up, mtu, RX/TX queues and rings, maximum channel counts,
-pause state, hardware timestamping, PHC index, supported/advertised/peer link
-modes, FEC fields, read-only driver_stats, and ethtool_error.
+networks entries contain name, state, physical, pci_address, driver,
+driver_version, firmware_version, bus_info, link_port, phy_address,
+transceiver, tp_mdix, traffic counters/rates, packets, errors, drops,
+link_speed_mbps, link_duplex, autonegotiation, link_up, mtu, RX/TX queues and
+rings, maximum channel counts, pause state, hardware timestamping, PHC index,
+supported/advertised/peer link modes, FEC fields, features_active,
+features_wanted, features_hardware, features_no_change, coalesce_* fields,
+rss_hash_func, rss_indirection_size, rss_key_size, read-only driver_stats, and
+ethtool_error.
 virtual_network_count is the number of
 filtered virtual/device-less interfaces.
 

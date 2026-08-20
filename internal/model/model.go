@@ -260,6 +260,7 @@ type Thermal struct {
 	Zones   []ThermalZone `json:"thermal_zones"`
 	Sensors []Temperature `json:"temperature_sensors"`
 	Fans    []FanSpeed    `json:"fans"`
+	Power   []PowerSensor `json:"power_sensors"`
 }
 
 type ThermalZone struct {
@@ -282,16 +283,35 @@ type Temperature struct {
 	Max      float64 `json:"max_celsius,omitempty"`
 	Critical float64 `json:"critical_celsius,omitempty"`
 	Alarm    bool    `json:"alarm,omitempty"`
+	PCIPath  string  `json:"pci,omitempty"`
 }
 
 type FanSpeed struct {
-	Name   string `json:"name"`
-	Sensor string `json:"sensor,omitempty"`
-	Label  string `json:"label,omitempty"`
-	Source string `json:"source,omitempty"`
-	Input  uint64 `json:"input_rpm"`
-	Min    uint64 `json:"min_rpm,omitempty"`
-	Max    uint64 `json:"max_rpm,omitempty"`
+	Name    string `json:"name"`
+	Sensor  string `json:"sensor,omitempty"`
+	Label   string `json:"label,omitempty"`
+	Source  string `json:"source,omitempty"`
+	Input   uint64 `json:"input_rpm"`
+	Min     uint64 `json:"min_rpm,omitempty"`
+	Max     uint64 `json:"max_rpm,omitempty"`
+	PCIPath string `json:"pci,omitempty"`
+}
+
+// PowerSensor is an hwmon power or energy input. hwmon exposes powerN_input
+// in microwatts and energyN_input in microjoules; both are converted to their
+// SI unit before serialization. A driver may expose either or both.
+type PowerSensor struct {
+	Name        string  `json:"name"`
+	Sensor      string  `json:"sensor,omitempty"`
+	Label       string  `json:"label,omitempty"`
+	Source      string  `json:"source,omitempty"`
+	Kind        string  `json:"kind,omitempty"`
+	InputWatts  float64 `json:"input_watts,omitempty"`
+	InputJoules float64 `json:"input_joules,omitempty"`
+	CapWatts    float64 `json:"cap_watts,omitempty"`
+	CapMaxWatts float64 `json:"cap_max_watts,omitempty"`
+	Alarm       bool    `json:"alarm,omitempty"`
+	PCIPath     string  `json:"pci,omitempty"`
 }
 
 type NUMA struct {

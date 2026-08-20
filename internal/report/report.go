@@ -44,6 +44,13 @@ func ReadReport(r io.Reader) (model.Report, error) {
 	return result, nil
 }
 
+func powerAlarm(power model.PowerSensor) string {
+	if power.Alarm {
+		return ", ALARM"
+	}
+	return ""
+}
+
 func WriteText(w io.Writer, result model.Report) error {
 	if _, err := fmt.Fprintf(w, "Hardware Resources Report (%s)\n\n", result.GeneratedAt.Format(time.RFC3339)); err != nil {
 		return err
@@ -104,8 +111,8 @@ func WriteText(w io.Writer, result model.Report) error {
 		}
 	}
 	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
-	if len(result.Snapshot.Thermal.Zones) > 0 || len(result.Snapshot.Thermal.Sensors) > 0 || len(result.Snapshot.Thermal.Fans) > 0 {
-		fmt.Fprintf(w, "Thermal: %d zones, %d temperature sensors, %d fans\n", len(result.Snapshot.Thermal.Zones), len(result.Snapshot.Thermal.Sensors), len(result.Snapshot.Thermal.Fans))
+	if len(result.Snapshot.Thermal.Zones) > 0 || len(result.Snapshot.Thermal.Sensors) > 0 || len(result.Snapshot.Thermal.Fans) > 0 || len(result.Snapshot.Thermal.Power) > 0 {
+		fmt.Fprintf(w, "Thermal: %d zones, %d temperature sensors, %d fans, %d power/energy sensors\n", len(result.Snapshot.Thermal.Zones), len(result.Snapshot.Thermal.Sensors), len(result.Snapshot.Thermal.Fans), len(result.Snapshot.Thermal.Power))
 		for _, zone := range result.Snapshot.Thermal.Zones {
 			fmt.Fprintf(w, "  Thermal zone: %s %s %.1f C, critical %.1f C, passive %.1f C, policy %s, mode %s\n", zone.Name, zone.Type, zone.Current, zone.Critical, zone.Passive, zone.Policy, zone.Mode)
 		}
@@ -118,6 +125,14 @@ func WriteText(w io.Writer, result model.Report) error {
 		}
 		for _, fan := range result.Snapshot.Thermal.Fans {
 			fmt.Fprintf(w, "  Fan: %s %s %d RPM, min %d, max %d\n", fan.Name, fan.Label, fan.Input, fan.Min, fan.Max)
+		}
+		for _, power := range result.Snapshot.Thermal.Power {
+			if power.InputWatts > 0 {
+				fmt.Fprintf(w, "  Power: %s %s %.1f W, cap %.1f W, cap-max %.1f W%s\n", power.Name, power.Label, power.InputWatts, power.CapWatts, power.CapMaxWatts, powerAlarm(power))
+			}
+			if power.InputJoules > 0 {
+				fmt.Fprintf(w, "  Energy: %s %s %.1f J\n", power.Name, power.Label, power.InputJoules)
+			}
 		}
 	}
 	fmt.Fprintf(w, "Findings: %d\n", len(result.Findings))

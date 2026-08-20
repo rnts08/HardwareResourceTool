@@ -19,7 +19,7 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 	if sysRoot == "" {
 		sysRoot = "/sys"
 	}
-	thermal := model.Thermal{Zones: []model.ThermalZone{}, Sensors: []model.Temperature{}, Fans: []model.FanSpeed{}}
+	thermal := model.Thermal{Zones: []model.ThermalZone{}, Sensors: []model.Temperature{}, Fans: []model.FanSpeed{}, Power: []model.PowerSensor{}}
 
 	for _, path := range glob(filepath.Join(sysRoot, "class/thermal/thermal_zone[0-9]*")) {
 		zone := model.ThermalZone{Name: filepath.Base(path)}
@@ -44,6 +44,7 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 	for _, path := range glob(filepath.Join(sysRoot, "class/hwmon/hwmon[0-9]*")) {
 		source, _ := readTrimmed(filepath.Join(path, "name"))
 		kind := thermalSensorKind(source)
+		pciPath := hwmonPCIPath(sysRoot, path)
 		for _, input := range glob(filepath.Join(path, "temp[0-9]*_input")) {
 			base := strings.TrimSuffix(input, "_input")
 			current, ok := readMilliCelsius(input)
@@ -55,7 +56,7 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 			maximum, _ := readMilliCelsius(base + "_max")
 			critical, _ := readMilliCelsius(base + "_crit")
 			alarm := readUint(filepath.Join(base+"_alarm")) > 0
-			thermal.Sensors = append(thermal.Sensors, model.Temperature{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Kind: kind, Current: current, Max: maximum, Critical: critical, Alarm: alarm})
+			thermal.Sensors = append(thermal.Sensors, model.Temperature{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Kind: kind, Current: current, Max: maximum, Critical: critical, Alarm: alarm, PCIPath: pciPath})
 		}
 		for _, input := range glob(filepath.Join(path, "fan[0-9]*_input")) {
 			base := strings.TrimSuffix(input, "_input")
@@ -67,7 +68,30 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 			label, _ := readTrimmed(base + "_label")
 			minimum, _ := readUintFile(base + "_min")
 			maximum, _ := readUintFile(base + "_max")
-			thermal.Fans = append(thermal.Fans, model.FanSpeed{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Input: value, Min: minimum, Max: maximum})
+			thermal.Fans = append(thermal.Fans, model.FanSpeed{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Input: value, Min: minimum, Max: maximum, PCIPath: pciPath})
+		}
+		for _, input := range glob(filepath.Join(path, "power[0-9]*_input")) {
+			base := strings.TrimSuffix(input, "_input")
+			watts, ok := readMicro(input)
+			if !ok {
+				continue
+			}
+			sensor := strings.TrimPrefix(filepath.Base(base), "power")
+			label, _ := readTrimmed(base + "_label")
+			alarm := readUint(filepath.Join(base+"_alarm")) > 0
+			cap, _ := readMicro(base + "_cap")
+			capMax, _ := readMicro(base + "_cap_max")
+			thermal.Power = append(thermal.Power, model.PowerSensor{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Kind: kind, InputWatts: watts, CapWatts: cap, CapMaxWatts: capMax, Alarm: alarm, PCIPath: pciPath})
+		}
+		for _, input := range glob(filepath.Join(path, "energy[0-9]*_input")) {
+			base := strings.TrimSuffix(input, "_input")
+			joules, ok := readMicro(input)
+			if !ok {
+				continue
+			}
+			sensor := strings.TrimPrefix(filepath.Base(base), "energy")
+			label, _ := readTrimmed(base + "_label")
+			thermal.Power = append(thermal.Power, model.PowerSensor{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Kind: kind, InputJoules: joules, PCIPath: pciPath})
 		}
 	}
 
@@ -80,8 +104,67 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 	if len(thermal.Fans) == 0 {
 		thermal.Fans = nil
 	}
+	if len(thermal.Power) == 0 {
+		thermal.Power = nil
+	}
 	s.Thermal = thermal
 	return nil
+}
+
+// correlateGPUThermal merges hwmon sensors with the GPU inventory. When NVML
+// does not provide a temperature or power reading, a matching hwmon sensor
+// for the same PCI address fills it in so GPU thermal telemetry survives even
+// when the NVIDIA driver telemetry path is unavailable.
+func correlateGPUThermal(s *model.Snapshot) {
+	if len(s.Thermal.Sensors) == 0 && len(s.Thermal.Power) == 0 {
+		return
+	}
+	temps := map[string]model.Temperature{}
+	for _, sensor := range s.Thermal.Sensors {
+		if sensor.PCIPath != "" && sensor.Current > 0 {
+			temps[sensor.PCIPath] = sensor
+		}
+	}
+	powers := map[string]model.PowerSensor{}
+	for _, sensor := range s.Thermal.Power {
+		if sensor.PCIPath != "" && sensor.InputWatts > 0 {
+			powers[sensor.PCIPath] = sensor
+		}
+	}
+	for i := range s.GPUs {
+		gpu := &s.GPUs[i]
+		if gpu.TemperatureCelsius <= 0 {
+			if sensor, ok := temps[gpu.Address]; ok {
+				gpu.TemperatureCelsius = sensor.Current
+			}
+		}
+		if gpu.PowerWatts <= 0 {
+			if sensor, ok := powers[gpu.Address]; ok {
+				gpu.PowerWatts = sensor.InputWatts
+			}
+		}
+	}
+}
+
+// hwmonPCIPath resolves the PCI address backing an hwmon device through the
+// `device` symlink, when the kernel exposes one. Drivers that report a GPU,
+// NIC, NVMe, or other PCI-attached sensor through hwmon use this to correlate
+// the sensor with the PCI inventory.
+func hwmonPCIPath(sysRoot, hwmonPath string) string {
+	path := filepath.Join(hwmonPath, "device")
+	if _, err := os.Lstat(path); err != nil {
+		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return ""
+	}
+	for _, part := range splitPath(resolved) {
+		if pciAddressPattern.MatchString(part) {
+			return part
+		}
+	}
+	return ""
 }
 
 // thermalSensorKind classifies an hwmon device by its kernel name so sensors
@@ -120,4 +203,14 @@ func readMilliCelsius(path string) (float64, bool) {
 		return 0, false
 	}
 	return float64(value) / 1000.0, true
+}
+
+// readMicro reads a hwmon value expressed in micro-units (microwatts or
+// microjoules) and converts it to the SI unit.
+func readMicro(path string) (float64, bool) {
+	value, ok := readUintFile(path)
+	if !ok {
+		return 0, false
+	}
+	return float64(value) / 1_000_000.0, true
 }

@@ -257,7 +257,7 @@ func TestWalkPCICapabilitiesBoundsMalformedChains(t *testing.T) {
 	}
 }
 
-func TestCollectThermalReadsZonesSensorsAndFans(t *testing.T) {
+func TestCollectThermalReadsZonesSensorsFansAndPower(t *testing.T) {
 	sys := t.TempDir()
 	zone := filepath.Join(sys, "class/thermal/thermal_zone0")
 	writeFixture(t, zone, "type", "x86_pkg_temp\n")
@@ -276,6 +276,18 @@ func TestCollectThermalReadsZonesSensorsAndFans(t *testing.T) {
 	writeFixture(t, hwmon, "fan1_input", "2400\n")
 	writeFixture(t, hwmon, "fan1_min", "600\n")
 	writeFixture(t, hwmon, "fan1_max", "5000\n")
+	writeFixture(t, hwmon, "power1_input", "45000000\n")
+	writeFixture(t, hwmon, "power1_cap", "125000000\n")
+	writeFixture(t, hwmon, "energy1_input", "123456789\n")
+	gpu := filepath.Join(sys, "class/hwmon/hwmon1")
+	writeFixture(t, gpu, "name", "amdgpu\n")
+	writeFixture(t, gpu, "temp1_input", "58000\n")
+	if err := os.MkdirAll(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), filepath.Join(gpu, "device")); err != nil {
+		t.Fatal(err)
+	}
 	snapshot := model.Snapshot{}
 	if err := (&Collector{sysRoot: sys}).collectThermal(&snapshot); err != nil {
 		t.Fatal(err)
@@ -287,18 +299,59 @@ func TestCollectThermalReadsZonesSensorsAndFans(t *testing.T) {
 	if zoneData.Type != "x86_pkg_temp" || zoneData.Current != 45 || zoneData.Critical != 100 || zoneData.Policy != "step_wise" {
 		t.Fatalf("unexpected thermal zone: %#v", zoneData)
 	}
-	if len(snapshot.Thermal.Sensors) != 1 {
-		t.Fatalf("expected 1 temperature sensor, got %#v", snapshot.Thermal.Sensors)
+	if len(snapshot.Thermal.Sensors) != 2 {
+		t.Fatalf("expected 2 temperature sensors, got %#v", snapshot.Thermal.Sensors)
 	}
 	sensor := snapshot.Thermal.Sensors[0]
 	if sensor.Label != "Package id 0" || sensor.Source != "coretemp" || sensor.Kind != "cpu" || sensor.Current != 45.2 || sensor.Critical != 100 || !sensor.Alarm {
 		t.Fatalf("unexpected temperature sensor: %#v", sensor)
+	}
+	if snapshot.Thermal.Sensors[1].Kind != "gpu" || snapshot.Thermal.Sensors[1].PCIPath != "0000:00:03.0" {
+		t.Fatalf("unexpected gpu sensor with PCI correlation: %#v", snapshot.Thermal.Sensors[1])
 	}
 	if len(snapshot.Thermal.Fans) != 1 {
 		t.Fatalf("expected 1 fan, got %#v", snapshot.Thermal.Fans)
 	}
 	if snapshot.Thermal.Fans[0].Input != 2400 || snapshot.Thermal.Fans[0].Min != 600 {
 		t.Fatalf("unexpected fan: %#v", snapshot.Thermal.Fans[0])
+	}
+	if len(snapshot.Thermal.Power) != 2 {
+		t.Fatalf("expected 2 power/energy sensors, got %#v", snapshot.Thermal.Power)
+	}
+	power := snapshot.Thermal.Power[0]
+	if power.Sensor != "1" || power.Label != "" || power.InputWatts != 45 || power.CapWatts != 125 || power.InputJoules != 0 {
+		t.Fatalf("unexpected power sensor: %#v", power)
+	}
+	energy := snapshot.Thermal.Power[1]
+	if energy.InputJoules != 123.456789 || energy.InputWatts != 0 {
+		t.Fatalf("unexpected energy sensor: %#v", energy)
+	}
+}
+
+func TestCorrelateGPUThermalMergesHwmon(t *testing.T) {
+	snapshot := model.Snapshot{
+		Thermal: model.Thermal{
+			Sensors: []model.Temperature{{Name: "hwmon1", Kind: "gpu", Current: 58, PCIPath: "0000:00:03.0"}},
+			Power:   []model.PowerSensor{{Name: "hwmon1", Kind: "gpu", InputWatts: 150, PCIPath: "0000:00:03.0"}},
+		},
+		GPUs: []model.GPU{{Address: "0000:00:03.0", Name: "GPU A", NVML: false}},
+	}
+	correlateGPUThermal(&snapshot)
+	if snapshot.GPUs[0].TemperatureCelsius != 58 || snapshot.GPUs[0].PowerWatts != 150 {
+		t.Fatalf("expected merged thermal on GPU, got %#v", snapshot.GPUs[0])
+	}
+}
+
+func TestCorrelateGPUThermalKeepsNVMLValues(t *testing.T) {
+	snapshot := model.Snapshot{
+		Thermal: model.Thermal{
+			Sensors: []model.Temperature{{Name: "hwmon1", Kind: "gpu", Current: 58, PCIPath: "0000:00:03.0"}},
+		},
+		GPUs: []model.GPU{{Address: "0000:00:03.0", TemperatureCelsius: 65, PowerWatts: 200, NVML: true}},
+	}
+	correlateGPUThermal(&snapshot)
+	if snapshot.GPUs[0].TemperatureCelsius != 65 || snapshot.GPUs[0].PowerWatts != 200 {
+		t.Fatalf("NVML values must win, got %#v", snapshot.GPUs[0])
 	}
 }
 
@@ -308,7 +361,7 @@ func TestCollectThermalEmptyWhenNoSensors(t *testing.T) {
 	if err := (&Collector{sysRoot: sys}).collectThermal(&snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Thermal.Zones) != 0 || len(snapshot.Thermal.Sensors) != 0 || len(snapshot.Thermal.Fans) != 0 {
+	if len(snapshot.Thermal.Zones) != 0 || len(snapshot.Thermal.Sensors) != 0 || len(snapshot.Thermal.Fans) != 0 || len(snapshot.Thermal.Power) != 0 {
 		t.Fatalf("expected empty thermal, got %#v", snapshot.Thermal)
 	}
 }

@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.14.0. Hardware Resources Tool is a read-only
+This manual describes release 0.15.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.14.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.15.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -269,9 +269,14 @@ temperature, critical and passive trip thresholds, governor policy, and mode.
 Temperature-sensor rows show the hwmon device and source, the sensor index,
 label, kind (cpu/gpu/disk/board), current/max/critical temperatures, and an
 ALARM marker when the sensor raises one. Fan rows show the fan index, label,
-and current/min/max speed in RPM. A zero fan speed with a defined range is
+and current/min/max speed in RPM. Power/energy rows show the sensor index,
+label, input watts (with cap and cap-max when the driver exposes them) and
+cumulative input joules. A zero fan speed with a defined range is
 flagged as a warning, and sensors at or above 90% of their critical threshold
 are highlighted. Absent sensors produce an empty window rather than an error.
+Sensors whose device is PCI-attached show the backing PCI address, and GPU
+temperature/power from hwmon is merged into the GPU inventory only when NVML
+does not provide a reading.
 
 ### Top
 
@@ -413,10 +418,15 @@ thermal.thermal_zones is a list of kernel thermal zones with name, type,
 current_celsius, critical_celsius, passive_celsius, policy, and mode.
 thermal.temperature_sensors is a list of hwmon temperature sensors with
 device name, sensor index, label, source (the hwmon `name`), kind
-(cpu/gpu/disk/board), current/max/critical_celsius, and alarm.
+(cpu/gpu/disk/board), current/max/critical_celsius, alarm, and pci (the PCI
+address backing the device when resolvable).
 thermal.fans is a list of hwmon fans with device name, sensor index, label,
-source, and input_rpm/min_rpm/max_rpm. Absent values use omitempty and are
-not proof that the sensor does not exist.
+source, input_rpm/min_rpm/max_rpm, and pci.
+thermal.power_sensors is a list of hwmon power/energy inputs with device name,
+sensor index, label, source, kind, input_watts, cap_watts, cap_max_watts,
+input_joules, alarm, and pci. powerN_input values are stored in watts and
+energyN_input values in joules; a driver may expose either or both. Absent
+values use omitempty and are not proof that the sensor does not exist.
 
 ## 7. Applying findings safely
 

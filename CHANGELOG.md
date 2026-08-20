@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0 — 2026-08-20
+
+- Read hwmon power and energy sensors (`powerN_input` in microwatts and
+  `energyN_input` in microjoules) from the same devices that expose
+  temperature and fans, including power-cap and cap-max readouts where the
+  driver exposes them, exposed as `power_sensors` in JSON, in the text report,
+  and in the TUI Thermal tab.
+- Correlated hwmon sensors with the PCI inventory: every temperature, fan, and
+  power sensor now records the PCI address backing its device when resolvable,
+  and GPU temperature/power from hwmon is merged into the GPU inventory only
+  when NVML does not provide a reading (NVML values always win).
+
 ## 0.14.0 — 2026-08-20
 
 - Added a `compare` command that diffs two saved `report --json` captures for

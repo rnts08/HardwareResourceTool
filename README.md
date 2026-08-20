@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.14.0` (`v0.14.0`). It is focused on Linux hosts,
+The current release is `0.15.0` (`v0.15.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -37,8 +37,12 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   Linux exposes them.
 - Host thermal telemetry from `/sys/class/thermal` zones and `/sys/class/hwmon`
   sensors: zone type and trip thresholds, per-sensor temperature/max/critical
-  limits and alarm flags, and fan speed in RPM. GPU temperature continues to be
-  reported through NVML.
+  limits and alarm flags, fan speed in RPM, and power/energy inputs
+  (`powerN_input`, `energyN_input`) with cap readouts where exposed. Sensors
+  are correlated to the PCI address backing their device, and GPU
+  temperature/power from hwmon merges into the GPU inventory when NVML is
+  unavailable. GPU temperature continues to be reported through NVML when
+  present.
 - NVIDIA PCI identity plus optional dynamically loaded NVML identity, UUID,
   device and running-process framebuffer memory accounting, utilization,
   temperature, power, ECC, and MIG-mode telemetry. GPUs assigned to KVM
@@ -113,7 +117,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.14.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.15.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 

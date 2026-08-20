@@ -248,7 +248,7 @@ jump straight to the hottest processes without reading JSON.
 Acceptance: comparing two captures reports changed findings and rate deltas
 per resource category.
 
-### 0.15.0 — thermal completion
+### 0.15.0 — thermal completion ✅ shipped in 0.15.0
 
 - Read hwmon power/energy sensors from the same devices that expose
   temperature and fans.

@@ -811,7 +811,7 @@ func viewHardware(snapshot model.Snapshot) string {
 func viewThermal(snapshot model.Snapshot) string {
 	var b strings.Builder
 	b.WriteString("Thermal\n")
-	if len(snapshot.Thermal.Zones) == 0 && len(snapshot.Thermal.Sensors) == 0 && len(snapshot.Thermal.Fans) == 0 {
+	if len(snapshot.Thermal.Zones) == 0 && len(snapshot.Thermal.Sensors) == 0 && len(snapshot.Thermal.Fans) == 0 && len(snapshot.Thermal.Power) == 0 {
 		b.WriteString("  No thermal sensors reported.\n")
 		return b.String()
 	}
@@ -840,6 +840,21 @@ func viewThermal(snapshot model.Snapshot) string {
 				line = markWarning + line
 			}
 			b.WriteString(line)
+		}
+	}
+	if len(snapshot.Thermal.Power) > 0 {
+		b.WriteString("\nPower / energy\n")
+		for _, power := range snapshot.Thermal.Power {
+			if power.InputWatts > 0 {
+				line := fmt.Sprintf("  %-8s %-8s %-20s %8.1f W  cap %6.1f W  cap-max %6.1f W\n", power.Name, power.Sensor, power.Label, power.InputWatts, power.CapWatts, power.CapMaxWatts)
+				if power.Alarm {
+					line = markWarning + line
+				}
+				b.WriteString(line)
+			}
+			if power.InputJoules > 0 {
+				fmt.Fprintf(&b, "  %-8s %-8s %-20s %8.1f J\n", power.Name, power.Sensor, power.Label, power.InputJoules)
+			}
 		}
 	}
 	return b.String()

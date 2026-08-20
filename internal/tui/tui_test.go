@@ -139,6 +139,16 @@ func TestTabAtXMapsTabs(t *testing.T) {
 	}
 }
 
+func TestViewThermalShowsPowerAndEnergy(t *testing.T) {
+	snapshot := model.Snapshot{Thermal: model.Thermal{Power: []model.PowerSensor{{Name: "hwmon0", Sensor: "1", Label: "CPU package", InputWatts: 45, CapWatts: 125}, {Name: "hwmon0", Sensor: "1", InputJoules: 123.45}}}}
+	view := viewThermal(snapshot)
+	for _, expected := range []string{"Power / energy", "45.0 W", "cap  125.0 W", "123.5 J"} {
+		if !contains(view, expected) {
+			t.Fatalf("view missing %q: %s", expected, view)
+		}
+	}
+}
+
 func contains(value, expected string) bool {
 	for i := 0; i+len(expected) <= len(value); i++ {
 		if value[i:i+len(expected)] == expected {

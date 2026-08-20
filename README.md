@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.13.0` (`v0.13.0`). It is focused on Linux hosts,
+The current release is `0.14.0` (`v0.14.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -113,7 +113,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.13.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.14.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -141,6 +141,8 @@ Commands:
 - `report` performs a configurable two-sample collection and writes text by
   default or JSON with `--json`.
 - `tui` starts the live terminal dashboard.
+- `compare OLDER.json NEWER.json` diffs two saved JSON reports for
+  before/after maintenance and migration reviews.
 - `version` prints release, platform, commit, and build timestamp metadata and
   does not require root.
 
@@ -265,6 +267,20 @@ The JSON top level includes `schema_version`, generation time, collection
 duration, `snapshot`, and `findings`. The schema version is currently `1`.
 Fields marked with `omitempty` are absent when the source does not provide a
 value; an absent field is not proof that the resource does not exist.
+
+To review a before/after change after saving two captures:
+
+```sh
+sudo ./hardware-resources report --json --duration 10s > before.json
+# ... perform maintenance ...
+sudo ./hardware-resources report --json --duration 10s > after.json
+sudo ./hardware-resources compare before.json after.json
+```
+
+The comparison lists new and cleared findings, per-category rate deltas (CPU,
+memory, kernel events, virtualization overcommit, per-disk and per-network
+throughput, thermal-zone temperatures), and newly added or removed resources.
+`compare --json` emits the same diff machine-readably.
 
 ## Safety and limitations
 

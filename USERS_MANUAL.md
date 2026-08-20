@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.13.0. Hardware Resources Tool is a read-only
+This manual describes release 0.14.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.13.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.14.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -137,6 +137,16 @@ tui starts the live dashboard. The interval has a 500 ms minimum. The
 dashboard keeps at most 60 snapshots for sparklines. Collection is gated so a
 slow snapshot cannot overlap the next one, and it accepts the same threshold
 flags as `check` and `report` so live findings match report findings.
+
+### compare
+
+compare OLDER.json NEWER.json reads two captures written by `report --json`
+and writes a before/after diff: findings that appeared or cleared between the
+captures, rate deltas per category (CPU, memory, kernel events,
+virtualization overcommit, per-disk and per-network throughput, thermal-zone
+temperatures), and newly added or removed disks and networks. Rows with no
+observable change are omitted. compare --json emits the same diff as JSON and
+does not require root.
 
 ### version
 

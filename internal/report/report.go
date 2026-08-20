@@ -32,6 +32,18 @@ func WriteJSON(w io.Writer, result model.Report) error {
 	return encoder.Encode(result)
 }
 
+// ReadReport decodes a capture written by WriteJSON. Unknown fields from a
+// capture produced by a newer schema version are ignored so historical
+// comparison stays tolerant.
+func ReadReport(r io.Reader) (model.Report, error) {
+	var result model.Report
+	decoder := json.NewDecoder(r)
+	if err := decoder.Decode(&result); err != nil {
+		return model.Report{}, err
+	}
+	return result, nil
+}
+
 func WriteText(w io.Writer, result model.Report) error {
 	if _, err := fmt.Fprintf(w, "Hardware Resources Report (%s)\n\n", result.GeneratedAt.Format(time.RFC3339)); err != nil {
 		return err

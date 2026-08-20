@@ -240,7 +240,7 @@ show the throttled path is faster; VM rows state what is unknown.
 Acceptance: an operator can select a VM or device, see its full breakdown, and
 jump straight to the hottest processes without reading JSON.
 
-### 0.14.0 — historical comparison
+### 0.14.0 — historical comparison ✅ shipped in 0.14.0
 
 - Add capture-to-capture comparison for two `report --json` outputs, or longer
   per-tab history, for before/after maintenance and migration reviews.

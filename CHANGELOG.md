@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0 — 2026-08-20
+
+- Added a `compare` command that diffs two saved `report --json` captures for
+  before/after maintenance and migration reviews. It reports findings that
+  appeared or cleared between the captures and per-category rate deltas for
+  CPU, memory, system/kernel events, virtualization overcommit, per-disk
+  throughput, per-network throughput, and thermal-zone temperatures, plus
+  newly added and removed disks and networks. `compare --json` emits the
+  machine-readable diff.
+- `report.ReadReport` now decodes captures written by a newer schema
+  tolerantly, ignoring unknown fields so historical comparisons do not break.
+
 ## 0.13.0 — 2026-08-20
 
 - Added a detail pane for devices and VMs. Press `d` on the Hardware tab to

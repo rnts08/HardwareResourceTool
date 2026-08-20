@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.0 — 2026-08-20
+
+- Added a heavy-telemetry throttle so the per-snapshot cost of QMP queries,
+  ethtool netlink reads, and per-VM `smaps_rollup`/`numa_maps` scans is paid
+  only once every five snapshots; the first snapshot is always heavy so a
+  fresh capture is complete. Lightweight accounting (cgroup counters, `/proc`
+  stat, sysfs statistics) still runs on every snapshot, keeping rates live.
+- Cached static ethtool metadata (link modes, channels, rings, FEC, pause,
+  timestamping) between heavy snapshots; link up/down state remains visible
+  every snapshot through sysfs `operstate`.
+- Reported kernel/system events as per-interval deltas ("since last sample")
+  in the TUI Overview instead of cumulative totals, computed against the
+  previous snapshot in the bounded history.
+- Surfaced per-VM QMP and runtime-placement availability explicitly: new
+  `qmp_available`, `qmp_error`, and `runtime_available` fields distinguish
+  "no QMP socket" from "QMP socket present but unreachable", instead of
+  silently dropping the fields.
+- Added a Top processes tab (key `7`) listing the ten highest-CPU host
+  processes with per-second CPU rate, resident set size, and state, sampled
+  from `/proc` counters and exposed as `top_processes` in JSON.
+- Added performance benchmarks for the per-snapshot `/proc` parsers
+  (`parseProcessJiffies`, `parseProcessIO`), runnable with `go test -bench`.
+
 ## 0.11.0 — 2026-08-20
 
 - Added read-only host thermal telemetry from `/sys/class/thermal` thermal

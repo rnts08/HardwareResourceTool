@@ -53,6 +53,65 @@ type qemuProcess struct {
 
 type virtualProcessCounter struct{ cpuJiffies, readBytes, writeBytes, cgroupCPUUsec uint64 }
 
+type vmHeavyTelemetry struct {
+	qmpData  qmpBalloonData
+	qmpOK    bool
+	anonHuge uint64
+	hugetlb  uint64
+	numa     map[int]uint64
+}
+
+func collectVMHeavy(procRoot, qmpPath string, pid int) vmHeavyTelemetry {
+	telemetry := vmHeavyTelemetry{}
+	telemetry.qmpData, telemetry.qmpOK = queryQMP(qmpPath)
+	telemetry.anonHuge, telemetry.hugetlb, telemetry.numa = readProcessRuntimeMemory(procRoot, pid)
+	return telemetry
+}
+
+func (c *Collector) applyHeavyToVM(vm *model.VirtualMachine, process qemuProcess, heavy bool) {
+	if c.vmHeavy == nil {
+		c.vmHeavy = map[int]vmHeavyTelemetry{}
+	}
+	if heavy {
+		c.vmHeavy[process.PID] = collectVMHeavy(c.procRoot, process.QMPPath, process.PID)
+	}
+	telemetry, ok := c.vmHeavy[process.PID]
+	if !ok {
+		return
+	}
+	applyVMHeavy(vm, telemetry)
+	if process.QMPPath != "" && !telemetry.qmpOK {
+		vm.QMPError = "QMP socket unavailable"
+	}
+}
+
+func applyVMHeavy(vm *model.VirtualMachine, telemetry vmHeavyTelemetry) {
+	vm.QMPAvailable = telemetry.qmpOK
+	vm.RuntimeAvailable = telemetry.numa != nil || telemetry.anonHuge > 0 || telemetry.hugetlb > 0
+	vm.RuntimeAnonHugeBytes, vm.RuntimeHugetlbBytes, vm.RuntimeNUMABytes = telemetry.anonHuge, telemetry.hugetlb, telemetry.numa
+	if !telemetry.qmpOK {
+		return
+	}
+	data := telemetry.qmpData
+	vm.QMPStatus = data.status
+	vm.BalloonActualBytes = data.actual
+	vm.BalloonTargetBytes = data.target
+	if vm.ConfiguredMemoryBytes > data.actual {
+		vm.BalloonReclaimedBytes = vm.ConfiguredMemoryBytes - data.actual
+	}
+	vm.BalloonCommittedBytes = data.committed
+	vm.BalloonAvailableBytes = data.available
+	vm.BalloonReported = data.reported
+	vm.BalloonGuestReport = data.guestReport
+	vm.BalloonSource = data.source
+	vm.QMPVersion = data.version
+	vm.QMPBaseMemoryBytes = data.baseMemory
+	vm.QMPPluggedMemoryBytes = data.pluggedMemory
+	vm.QMPVCPUs = data.vcpus
+	vm.QMPEnabledVCPUs = data.enabledVCPUs
+	vm.BalloonEnabled = data.reported
+}
+
 type domainDevicesXML struct {
 	Disks       []domainDiskXML    `xml:"disk"`
 	NICs        []domainNICXML     `xml:"interface"`
@@ -99,7 +158,7 @@ type domainHostdevXML struct {
 	} `xml:"source"`
 }
 
-func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, seconds float64) error {
+func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, seconds float64, heavy bool) error {
 	virt := model.Virtualization{VirtualMachines: []model.VirtualMachine{}}
 	if _, err := os.Stat(filepath.Join(c.sysRoot, "module/kvm")); err == nil {
 		virt.KVMAvailable = true
@@ -190,7 +249,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 				virt.VirtualMachines[i].ReadBytes = process.ReadBytes
 				virt.VirtualMachines[i].WriteBytes = process.WriteBytes
 				virt.VirtualMachines[i].MemoryCurrentBytes, virt.VirtualMachines[i].MemoryMaxBytes, virt.VirtualMachines[i].CgroupPath, virt.VirtualMachines[i].CgroupAvailable = readQEMUCgroup(c.procRoot, c.sysRoot, process.PID)
-				applyQMP(&virt.VirtualMachines[i], process.QMPPath)
+				c.applyHeavyToVM(&virt.VirtualMachines[i], process, heavy)
 				matched = true
 				break
 			}
@@ -198,7 +257,7 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 		if !matched {
 			current, maximum, cgroupPath, cgroupAvailable := readQEMUCgroup(c.procRoot, c.sysRoot, process.PID)
 			vm := model.VirtualMachine{Name: process.Name, VMID: process.VMID, PID: process.PID, ConfiguredVCPUs: process.VCPU, ConfiguredMemoryBytes: process.Memory, ProcessRSSBytes: process.RSS, CPUPercent: processCPUPercent(process, raw, seconds, s.CPU.LogicalCPUs), ReadBytes: process.ReadBytes, WriteBytes: process.WriteBytes, Running: true, Source: "qemu-process", MemoryCurrentBytes: current, MemoryMaxBytes: maximum, CgroupPath: cgroupPath, CgroupAvailable: cgroupAvailable}
-			applyQMP(&vm, process.QMPPath)
+			c.applyHeavyToVM(&vm, process, heavy)
 			virt.VirtualMachines = append(virt.VirtualMachines, vm)
 		}
 	}
@@ -213,7 +272,10 @@ func (c *Collector) collectVirtualization(s *model.Snapshot, raw *rawCounters, s
 					vm.ReadBytes, vm.WriteBytes = readBytes, writeBytes
 				}
 			}
-			vm.RuntimeAnonHugeBytes, vm.RuntimeHugetlbBytes, vm.RuntimeNUMABytes = readProcessRuntimeMemory(c.procRoot, vm.PID)
+			if telemetry, ok := c.vmHeavy[vm.PID]; ok {
+				vm.RuntimeAnonHugeBytes, vm.RuntimeHugetlbBytes, vm.RuntimeNUMABytes = telemetry.anonHuge, telemetry.hugetlb, telemetry.numa
+				vm.RuntimeAvailable = telemetry.numa != nil || telemetry.anonHuge > 0 || telemetry.hugetlb > 0
+			}
 		}
 		for j := range vm.NICs {
 			vm.NICs[j].HostNetwork = resolveVirtualNICHost(c.sysRoot, vm.NICs[j], s.Networks)
@@ -286,30 +348,6 @@ func readProcessRuntimeMemory(procRoot string, pid int) (uint64, uint64, map[int
 		numa = nil
 	}
 	return anonHuge, hugetlb, numa
-}
-
-func applyQMP(vm *model.VirtualMachine, path string) {
-	data, ok := queryQMP(path)
-	if !ok {
-		return
-	}
-	vm.QMPStatus = data.status
-	vm.BalloonActualBytes = data.actual
-	vm.BalloonTargetBytes = data.target
-	if vm.ConfiguredMemoryBytes > data.actual {
-		vm.BalloonReclaimedBytes = vm.ConfiguredMemoryBytes - data.actual
-	}
-	vm.BalloonCommittedBytes = data.committed
-	vm.BalloonAvailableBytes = data.available
-	vm.BalloonReported = data.reported
-	vm.BalloonGuestReport = data.guestReport
-	vm.BalloonSource = data.source
-	vm.QMPVersion = data.version
-	vm.QMPBaseMemoryBytes = data.baseMemory
-	vm.QMPPluggedMemoryBytes = data.pluggedMemory
-	vm.QMPVCPUs = data.vcpus
-	vm.QMPEnabledVCPUs = data.enabledVCPUs
-	vm.BalloonEnabled = data.reported
 }
 
 func memoryBytes(memory memoryXML) uint64 {

@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.11.0` (`v0.11.0`). It is focused on Linux hosts,
+The current release is `0.12.0` (`v0.12.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -113,7 +113,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.11.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.12.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -173,7 +173,8 @@ sudo ./hardware-resources tui --interval 2s
 The interval has a 500 ms minimum. The dashboard keeps at most 60 snapshots
 for its CPU-idle and memory-used sparklines. Use:
 
-- `1`–`6` to select Overview, Storage, Network, Findings, Hardware, or Thermal.
+- `1`–`7` to select Overview, Storage, Network, Findings, Hardware, Thermal,
+  or Top processes.
 - `Tab`, Right arrow, or `l` for the next view.
 - `Shift+Tab`, Left arrow, or `h` for the previous view.
 - `j`/`k` and Page Up/Down to scroll the active view vertically.
@@ -182,6 +183,11 @@ for its CPU-idle and memory-used sparklines. Use:
 - `r` to force a refresh before the next interval.
 - `?` for help.
 - `q` or `Ctrl+C` to exit.
+
+The Overview reports kernel/system event counts as deltas since the previous
+sample rather than cumulative totals. The Top processes view lists the ten
+highest-CPU host processes with per-second CPU rate, resident set size, and
+state.
 
 Findings are color-coded by severity (critical, warning, info) and collection
 is gated so a slow snapshot cannot overlap the next one. The TUI accepts the
@@ -231,7 +237,8 @@ Inspect the most useful new telemetry with jq:
 jq '.findings' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.XXXXXX/report.json
-jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.top_processes' /tmp/hardware-resources-live.XXXXXX/report.json
 ```
 
 Replace `XXXXXX` with the actual directory printed by the script. Without

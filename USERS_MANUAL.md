@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.11.0. Hardware Resources Tool is a read-only
+This manual describes release 0.12.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.11.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.12.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -94,7 +94,8 @@ fields. Useful checks are:
     jq '.findings' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.ABC123/report.json
-    jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.top_processes' /tmp/hardware-resources-live.ABC123/report.json
 
 Replace ABC123 with the actual directory name. If a field is absent, check
 collector_errors and the corresponding availability/status fields. A missing
@@ -144,8 +145,8 @@ and UTC build time. It does not require root.
 
 ## 4. TUI windows and controls
 
-The six windows are Overview, Storage, Network, Findings, Hardware, and
-Thermal. Select them with 1–6. Tab, Right arrow, and l move forward.
+The seven windows are Overview, Storage, Network, Findings, Hardware,
+Thermal, and Top. Select them with 1–7. Tab, Right arrow, and l move forward.
 Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down scroll the
 active window vertically; < and > or Shift+arrows scroll it horizontally;
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
@@ -159,7 +160,10 @@ one-, five-, and fifteen-minute load; context switches/s; interrupts/s; and
 recent idle history. It also shows memory used percentage, available GiB,
 swap in/out per second, memory history, CPU governor, THP policy, swappiness,
 NUMA node count, NUMA remote events/s, current process limits, PID 1 limits,
-selected sysctls, and KVM/QEMU allocation and overcommit ratios.
+selected sysctls, and KVM/QEMU allocation and overcommit ratios. Kernel and
+system event counts (OOM, I/O, PCIe/AER, hardware/EDAC/MCE, NVIDIA Xid,
+storage resets, link failures) are shown as deltas since the previous sample
+rather than cumulative totals.
 
 High load is not automatically a fault. Compare load with logical CPU count,
 idle, iowait, guest demand, and scheduling behavior. High iowait points toward
@@ -249,6 +253,14 @@ and current/min/max speed in RPM. A zero fan speed with a defined range is
 flagged as a warning, and sensors at or above 90% of their critical threshold
 are highlighted. Absent sensors produce an empty window rather than an error.
 
+### Top
+
+Top processes lists the ten highest-CPU host processes. Rows show the process
+name, PID, CPU rate between the last two samples, resident set size, and
+state. The first sample cannot produce a CPU rate, so it is shown as zero
+until a second snapshot is taken. Processes above 90% CPU are highlighted as
+a warning.
+
 ## 5. Text report interpretation
 
 Text output contains timestamp, CPU, memory/system, virtualization, limits and
@@ -293,6 +305,10 @@ is absent.
 | cpu.load_1m, load_5m, load_15m | Linux load averages |
 | cpu.context_switches_per_second | context-switch rate |
 | cpu.interrupts_per_second | interrupt rate |
+| top_processes | up to ten highest-CPU host processes: pid, name, cpu_percent, rss_bytes, state |
+
+The cpu_percent in top_processes is the rate between the last two samples;
+the first sample of a run reports zero until a baseline exists.
 | memory.total_bytes | host memory capacity |
 | memory.available_bytes | Linux MemAvailable |
 | memory.used_percent | total minus available, divided by total |
@@ -341,9 +357,17 @@ vCPUs/memory, process and cgroup CPU, process RSS, cgroup current/max/path and
 availability, process/cgroup I/O, hugepages and hugepage_bytes, runtime
 anonymous hugepage and hugetlb bytes, per-node runtime numa_maps bytes, parsed
 numa_nodes, QMP version, base/plugged memory, total/enabled vCPU counts,
-qmp_status, balloon enabled/reported/guest-report/source flags, balloon
+qmp_status, qmp_available, qmp_error, runtime_available, balloon
+enabled/reported/guest-report/source flags, balloon
 actual/target/reclaimed/committed/available bytes, and disks, nics, and
 pci_addresses.
+
+qmp_available is false when a VM has no QMP socket or its socket is
+unreachable; qmp_error records "QMP socket unavailable" when a configured
+socket cannot be queried, so the two cases are distinguishable.
+runtime_available is true when smaps_rollup/numa_maps data was read
+successfully. Because QMP and runtime-placement reads are throttled to every
+fifth snapshot, these fields reflect the most recent heavy collection.
 
 VM nics include guest type/source/target/MAC, host bridge/NIC correlation,
 and host RX/TX rates when resolvable. VM PCI addresses identify attachments;

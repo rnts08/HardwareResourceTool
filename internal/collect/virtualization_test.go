@@ -51,7 +51,7 @@ func TestCollectVirtualizationMergesLibvirtAndQEMUProcess(t *testing.T) {
 	}
 	snapshot := model.Snapshot{CPU: model.CPU{LogicalCPUs: 8}, Memory: model.Memory{TotalBytes: 16 * 1024 * 1024 * 1024}}
 	collector := &Collector{procRoot: proc, sysRoot: sys, etcRoot: etc}
-	if err := collector.collectVirtualization(&snapshot, &rawCounters{virtualProcesses: map[int]virtualProcessCounter{}}, 0); err != nil {
+	if err := collector.collectVirtualization(&snapshot, &rawCounters{virtualProcesses: map[int]virtualProcessCounter{}}, 0, true); err != nil {
 		t.Fatal(err)
 	}
 	virt := snapshot.Virtualization

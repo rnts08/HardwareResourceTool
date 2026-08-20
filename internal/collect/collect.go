@@ -24,7 +24,16 @@ type Collector struct {
 	prevAt        time.Time
 	hardware      model.Snapshot
 	hardwareReady bool
+	snapshotCount int
+	heavyInterval int
+	ethtoolCache  map[string]ethtoolData
+	vmHeavy       map[int]vmHeavyTelemetry
 }
+
+// defaultHeavyInterval is the number of snapshots between heavy per-snapshot
+// collections (QMP, ethtool netlink, and per-VM runtime memory maps). The
+// first snapshot is always heavy so a fresh capture is complete.
+const defaultHeavyInterval = 5
 
 type rawCounters struct {
 	cpuUser, cpuNice, cpuSystem, cpuIOWait, cpuIdle uint64
@@ -35,19 +44,29 @@ type rawCounters struct {
 	disks                                           map[string]diskCounter
 	networks                                        map[string]networkCounter
 	virtualProcesses                                map[int]virtualProcessCounter
+	processes                                       map[int]uint64
 }
 
 type diskCounter struct{ reads, sectorsRead, writes, sectorsWritten, inFlight uint64 }
 type networkCounter struct{ rxBytes, txBytes, rxPackets, txPackets, rxErrors, txErrors, rxDrops, txDrops uint64 }
 
 func New() *Collector {
-	return &Collector{procRoot: "/proc", sysRoot: "/sys", etcRoot: "/etc", logRoot: "/var/log"}
+	return &Collector{procRoot: "/proc", sysRoot: "/sys", etcRoot: "/etc", logRoot: "/var/log", heavyInterval: defaultHeavyInterval, ethtoolCache: map[string]ethtoolData{}, vmHeavy: map[int]vmHeavyTelemetry{}}
+}
+
+func (c *Collector) heavyDue() bool {
+	if c.heavyInterval <= 0 {
+		return true
+	}
+	return c.snapshotCount%c.heavyInterval == 0
 }
 
 func (c *Collector) Snapshot() model.Snapshot {
 	now := time.Now().UTC()
 	snapshot := model.Snapshot{CollectedAt: now, Disks: []model.Disk{}, Filesystems: []model.Filesystem{}, Networks: []model.Network{}, PCI: []model.PCIDevice{}, MemoryDevices: []model.MemoryDevice{}, GPUs: []model.GPU{}, Errors: []string{}}
-	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}, virtualProcesses: map[int]virtualProcessCounter{}}
+	current := rawCounters{disks: map[string]diskCounter{}, networks: map[string]networkCounter{}, virtualProcesses: map[int]virtualProcessCounter{}, processes: map[int]uint64{}}
+	heavy := c.heavyDue()
+	c.snapshotCount++
 
 	if err := c.collectCPU(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
@@ -58,7 +77,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectDisks(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectNetworks(&snapshot, &current); err != nil {
+	if err := c.collectNetworks(&snapshot, &current, heavy); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if err := c.collectFilesystems(&snapshot); err != nil {
@@ -70,7 +89,10 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectThermal(&snapshot); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectVirtualization(&snapshot, &current, now.Sub(c.prevAt).Seconds()); err != nil {
+	if err := c.collectVirtualization(&snapshot, &current, now.Sub(c.prevAt).Seconds(), heavy); err != nil {
+		snapshot.Errors = append(snapshot.Errors, err.Error())
+	}
+	if err := c.collectTopProcesses(&snapshot, &current, now.Sub(c.prevAt).Seconds()); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if !c.hardwareReady {
@@ -240,7 +262,7 @@ func (c *Collector) collectDisks(s *model.Snapshot, raw *rawCounters) error {
 	return nil
 }
 
-func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
+func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters, heavy bool) error {
 	entries, err := os.ReadDir(filepath.Join(c.sysRoot, "class/net"))
 	if err != nil {
 		return fmt.Errorf("networks: %w", err)
@@ -258,7 +280,7 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 		}
 		names = append(names, name)
 	}
-	ethtoolDataByName := enrichNetworks(names)
+	ethtoolDataByName := c.ethToolData(names, heavy)
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "lo" {
@@ -292,6 +314,13 @@ func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters) error {
 		s.Networks = append(s.Networks, model.Network{Name: name, State: strings.TrimSpace(string(state)), RXBytes: values["rx_bytes"], TXBytes: values["tx_bytes"], RXPackets: int64(values["rx_packets"]), TXPackets: int64(values["tx_packets"]), RXErrors: int64(values["rx_errors"]), TXErrors: int64(values["tx_errors"]), RXDrops: int64(values["rx_dropped"]), TXDrops: int64(values["tx_dropped"]), LinkSpeedMbps: linkSpeed, MTU: mtu, RXQueues: rxQueues, TXQueues: txQueues, RXRingSize: rxRing, TXRingSize: txRing, Driver: driver, LinkDuplex: ethtoolData.Duplex, AutoNegotiation: ethtoolData.Autoneg, LinkUp: ethtoolData.LinkUp, SupportedLinkModes: ethtoolData.Supported, AdvertisedLinkModes: ethtoolData.Advertised, PeerLinkModes: ethtoolData.Peer, FECActive: ethtoolData.FECActive, FECSupported: ethtoolData.FECSupported, MaxRXChannels: ethtoolData.MaxRXChannels, MaxTXChannels: ethtoolData.MaxTXChannels, MaxCombinedChannels: ethtoolData.MaxCombinedChannels, PauseAutoneg: ethtoolData.PauseAutoneg, RXPause: ethtoolData.RXPause, TXPause: ethtoolData.TXPause, Timestamping: ethtoolData.Timestamping, PHCIndex: ethtoolData.PHCIndex, EthtoolError: ethtoolData.Error, Physical: true, PCIAddress: pciAddress})
 	}
 	return nil
+}
+
+func (c *Collector) ethToolData(names []string, heavy bool) map[string]ethtoolData {
+	if heavy || c.ethtoolCache == nil {
+		c.ethtoolCache = enrichNetworks(names)
+	}
+	return c.ethtoolCache
 }
 
 func (c *Collector) collectFilesystems(s *model.Snapshot) error {

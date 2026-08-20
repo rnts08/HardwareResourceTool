@@ -215,7 +215,7 @@ CHANGELOG, then commit as `release: <version> <summary>` and push. Collection
 performance lands first because the TUI depth items are only usable on large
 hosts when a snapshot is cheap.
 
-### 0.12.0 — collection performance (prereq for TUI depth)
+### 0.12.0 — collection performance (prereq for TUI depth) ✅ shipped in 0.12.0
 
 - Throttle heavy per-snapshot telemetry (QMP queries, ethtool netlink,
   kernel-log tails, per-VM `numa_maps`/`smaps_rollup`) to every Nth snapshot

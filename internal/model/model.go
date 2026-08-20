@@ -5,22 +5,23 @@ import "time"
 const SchemaVersion = "1"
 
 type Snapshot struct {
-	CollectedAt         time.Time      `json:"collected_at"`
-	CollectDurationMS   int64          `json:"collect_duration_ms,omitempty"`
-	CPU                 CPU            `json:"cpu"`
-	Memory              Memory         `json:"memory"`
-	Disks               []Disk         `json:"disks"`
-	Filesystems         []Filesystem   `json:"filesystems"`
-	Networks            []Network      `json:"networks"`
-	VirtualNetworkCount int            `json:"virtual_network_count,omitempty"`
-	PCI                 []PCIDevice    `json:"pci_devices"`
-	MemoryDevices       []MemoryDevice `json:"memory_devices"`
-	GPUs                []GPU          `json:"gpus"`
-	Thermal             Thermal        `json:"thermal"`
-	Virtualization      Virtualization `json:"virtualization"`
-	NUMA                NUMA           `json:"numa"`
-	System              SystemSettings `json:"system"`
-	Errors              []string       `json:"collector_errors"`
+	CollectedAt         time.Time       `json:"collected_at"`
+	CollectDurationMS   int64           `json:"collect_duration_ms,omitempty"`
+	CPU                 CPU             `json:"cpu"`
+	Memory              Memory          `json:"memory"`
+	Disks               []Disk          `json:"disks"`
+	Filesystems         []Filesystem    `json:"filesystems"`
+	Networks            []Network       `json:"networks"`
+	VirtualNetworkCount int             `json:"virtual_network_count,omitempty"`
+	PCI                 []PCIDevice     `json:"pci_devices"`
+	MemoryDevices       []MemoryDevice  `json:"memory_devices"`
+	GPUs                []GPU           `json:"gpus"`
+	Thermal             Thermal         `json:"thermal"`
+	Virtualization      Virtualization  `json:"virtualization"`
+	NUMA                NUMA            `json:"numa"`
+	System              SystemSettings  `json:"system"`
+	TopProcesses        []ProcessSample `json:"top_processes"`
+	Errors              []string        `json:"collector_errors"`
 }
 
 type CPU struct {
@@ -215,7 +216,10 @@ type VirtualMachine struct {
 	RuntimeAnonHugeBytes  uint64         `json:"runtime_anon_huge_bytes,omitempty"`
 	RuntimeHugetlbBytes   uint64         `json:"runtime_hugetlb_bytes,omitempty"`
 	RuntimeNUMABytes      map[int]uint64 `json:"runtime_numa_bytes,omitempty"`
+	RuntimeAvailable      bool           `json:"runtime_available,omitempty"`
 	QMPStatus             string         `json:"qmp_status,omitempty"`
+	QMPAvailable          bool           `json:"qmp_available,omitempty"`
+	QMPError              string         `json:"qmp_error,omitempty"`
 	Disks                 []VirtualDisk  `json:"disks,omitempty"`
 	NICs                  []VirtualNIC   `json:"nics,omitempty"`
 	PCIAddresses          []string       `json:"pci_addresses,omitempty"`
@@ -324,6 +328,14 @@ type Limits struct {
 	MaxLocked    uint64 `json:"max_locked_memory_bytes"`
 	MaxProcesses uint64 `json:"max_processes_limit"`
 	MaxStack     uint64 `json:"max_stack_bytes"`
+}
+
+type ProcessSample struct {
+	PID        int     `json:"pid"`
+	Name       string  `json:"name"`
+	CPUPercent float64 `json:"cpu_percent"`
+	RSSBytes   uint64  `json:"rss_bytes"`
+	State      string  `json:"state,omitempty"`
 }
 
 type Finding struct {

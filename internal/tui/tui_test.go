@@ -23,7 +23,7 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
 	view := (modelState{tab: 3, thresholds: analyze.DefaultThresholds}).View()
-	for _, expected := range []string{"[4 Findings]", "No findings.", "1-6: tabs"} {
+	for _, expected := range []string{"[4 Findings]", "No findings.", "1-7: tabs"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -36,6 +36,31 @@ func TestViewShowsThermalTabAndEmptyState(t *testing.T) {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
+	}
+}
+
+func TestKernelEventDeltas(t *testing.T) {
+	previous := model.KernelEvents{OOM: 2, IOErrors: 5, StorageResets: 1}
+	current := model.KernelEvents{OOM: 2, IOErrors: 8, PCIeErrors: 3, Hardware: 1, StorageResets: 1}
+	delta := kernelEventDeltas(previous, current)
+	if delta.OOM != 0 || delta.IOErrors != 3 || delta.PCIeErrors != 3 || delta.Hardware != 1 || delta.StorageResets != 0 || delta.LinkFailures != 0 {
+		t.Fatalf("unexpected kernel event deltas: %#v", delta)
+	}
+}
+
+func TestViewTopShowsProcesses(t *testing.T) {
+	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{{PID: 42, Name: "qemu-system-x86_64", CPUPercent: 95.5, RSSBytes: 1 << 30, State: "R"}}}
+	view := viewTop(snapshot)
+	for _, expected := range []string{"qemu-system-x86_64", "pid      42", "cpu   95.5%", "1.0 GiB"} {
+		if !contains(view, expected) {
+			t.Fatalf("view missing %q: %s", expected, view)
+		}
+	}
+}
+
+func TestViewTopEmptyState(t *testing.T) {
+	if !contains(viewTop(model.Snapshot{}), "No process samples available.") {
+		t.Fatal("empty top view missing hint")
 	}
 }
 

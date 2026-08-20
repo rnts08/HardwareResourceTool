@@ -35,7 +35,7 @@ type modelState struct {
 	collectTime time.Duration
 }
 
-var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware", "Thermal"}
+var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware", "Thermal", "Top"}
 
 var (
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -68,7 +68,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "1", "2", "3", "4", "5", "6":
+		case "1", "2", "3", "4", "5", "6", "7":
 			m.tab = int(msg.String()[0] - '1')
 			m.offset, m.xoffset = 0, 0
 		case "tab", "right", "l":
@@ -204,7 +204,7 @@ func (m modelState) View() string {
 		}
 		footer.WriteString("Collector errors: " + errors + "\n")
 	}
-	footer.WriteString("1-6: tabs  h/l prev/next  j/k scroll  </> horizontal  space pause  ? help  q quit")
+	footer.WriteString("1-7: tabs  h/l prev/next  j/k scroll  </> horizontal  space pause  ? help  q quit")
 
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
 }
@@ -221,6 +221,8 @@ func (m modelState) tabContent() string {
 		return viewHardware(m.snapshot)
 	case 5:
 		return viewThermal(m.snapshot)
+	case 6:
+		return viewTop(m.snapshot)
 	default:
 		return viewOverview(m.snapshot, m.history, m.thresholds)
 	}
@@ -346,7 +348,7 @@ func renderHelp(thresholds analyze.Thresholds) string {
 	return strings.Join([]string{
 		"Help",
 		"",
-		"  1-6 or h/l/tab     switch tabs (Overview, Storage, Network, Findings, Hardware, Thermal)",
+		"  1-7 or h/l/tab     switch tabs (Overview, Storage, Network, Findings, Hardware, Thermal, Top)",
 		"  j/k, PgUp/PgDn     scroll the active tab vertically",
 		"  </>, shift+arrows  scroll the active tab horizontally",
 		"  space              pause/resume live collection",
@@ -383,7 +385,12 @@ func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds 
 	fmt.Fprintf(&b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
 	fmt.Fprintf(&b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
 	if events := snapshot.System.KernelEvents; len(events.Recent) > 0 || events.OOM+events.IOErrors+events.PCIeErrors+events.Hardware+events.NVIDIA+events.StorageResets+events.LinkFailures > 0 {
-		fmt.Fprintf(&b, "        kernel events OOM %d  I/O %d  PCIe %d  HW %d  NVIDIA %d  storage resets %d  link failures %d\n", events.OOM, events.IOErrors, events.PCIeErrors, events.Hardware, events.NVIDIA, events.StorageResets, events.LinkFailures)
+		label, deltas := "cumulative", events
+		if len(history) >= 2 {
+			deltas = kernelEventDeltas(history[len(history)-2].System.KernelEvents, events)
+			label = "since last sample"
+		}
+		fmt.Fprintf(&b, "        kernel events (%s) OOM %d  I/O %d  PCIe %d  HW %d  NVIDIA %d  storage resets %d  link failures %d\n", label, deltas.OOM, deltas.IOErrors, deltas.PCIeErrors, deltas.Hardware, deltas.NVIDIA, deltas.StorageResets, deltas.LinkFailures)
 	}
 	if snapshot.Virtualization.QEMUDetected || snapshot.Virtualization.KVMAvailable || len(snapshot.Virtualization.VirtualMachines) > 0 {
 		fmt.Fprintf(&b, "Virtualization  %s  VMs %d  allocated vCPU %d (%.2fx)  memory %s (%.2fx)\n", snapshot.Virtualization.Hypervisor, len(snapshot.Virtualization.VirtualMachines), snapshot.Virtualization.AllocatedVCPUs, snapshot.Virtualization.VCPUOvercommitRatio, formatBytes(snapshot.Virtualization.AllocatedMemoryBytes), snapshot.Virtualization.MemoryOvercommitRatio)
@@ -395,6 +402,32 @@ func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds 
 		b.WriteString("  Rates appear after the second sample; keep the dashboard running or press r to refresh.\n")
 	}
 	return b.String()
+}
+
+func kernelEventDeltas(previous, current model.KernelEvents) model.KernelEvents {
+	delta := model.KernelEvents{}
+	if current.OOM > previous.OOM {
+		delta.OOM = current.OOM - previous.OOM
+	}
+	if current.IOErrors > previous.IOErrors {
+		delta.IOErrors = current.IOErrors - previous.IOErrors
+	}
+	if current.PCIeErrors > previous.PCIeErrors {
+		delta.PCIeErrors = current.PCIeErrors - previous.PCIeErrors
+	}
+	if current.Hardware > previous.Hardware {
+		delta.Hardware = current.Hardware - previous.Hardware
+	}
+	if current.NVIDIA > previous.NVIDIA {
+		delta.NVIDIA = current.NVIDIA - previous.NVIDIA
+	}
+	if current.StorageResets > previous.StorageResets {
+		delta.StorageResets = current.StorageResets - previous.StorageResets
+	}
+	if current.LinkFailures > previous.LinkFailures {
+		delta.LinkFailures = current.LinkFailures - previous.LinkFailures
+	}
+	return delta
 }
 
 func viewStorage(snapshot model.Snapshot) string {
@@ -511,6 +544,24 @@ func viewThermal(snapshot model.Snapshot) string {
 			b.WriteString(line)
 		}
 	}
+	return b.String()
+}
+
+func viewTop(snapshot model.Snapshot) string {
+	var b strings.Builder
+	b.WriteString("Top processes by CPU\n")
+	if len(snapshot.TopProcesses) == 0 {
+		b.WriteString("  No process samples available.\n")
+		return b.String()
+	}
+	for _, process := range snapshot.TopProcesses {
+		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %s\n", process.Name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), process.State)
+		if process.CPUPercent >= 90 {
+			line = markWarning + line
+		}
+		b.WriteString(line)
+	}
+	b.WriteString("\n  CPU percent is the rate between the last two samples.\n")
 	return b.String()
 }
 

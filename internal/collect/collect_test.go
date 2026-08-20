@@ -73,7 +73,7 @@ func TestCollectNetworkMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	snapshot := model.Snapshot{Networks: []model.Network{}}
-	if err := (&Collector{sysRoot: sys}).collectNetworks(&snapshot, &rawCounters{networks: map[string]networkCounter{}}); err != nil {
+	if err := (&Collector{sysRoot: sys}).collectNetworks(&snapshot, &rawCounters{networks: map[string]networkCounter{}}, true); err != nil {
 		t.Fatal(err)
 	}
 	if len(snapshot.Networks) != 1 || snapshot.Networks[0].LinkSpeedMbps != 1000 || snapshot.Networks[0].RXQueues != 1 || !snapshot.Networks[0].Physical || snapshot.VirtualNetworkCount != 1 {
@@ -310,6 +310,89 @@ func TestCollectThermalEmptyWhenNoSensors(t *testing.T) {
 	}
 	if len(snapshot.Thermal.Zones) != 0 || len(snapshot.Thermal.Sensors) != 0 || len(snapshot.Thermal.Fans) != 0 {
 		t.Fatalf("expected empty thermal, got %#v", snapshot.Thermal)
+	}
+}
+
+func TestEthtoolCacheReusedOnLightSnapshots(t *testing.T) {
+	sys := t.TempDir()
+	base := filepath.Join(sys, "class/net/eth0")
+	for _, key := range []string{"rx_bytes", "tx_bytes", "rx_packets", "tx_packets", "rx_errors", "tx_errors", "rx_dropped", "tx_dropped"} {
+		writeFixture(t, filepath.Join(base, "statistics"), key, "1\n")
+	}
+	writeFixture(t, base, "operstate", "up\n")
+	writeFixture(t, base, "speed", "1000\n")
+	writeFixture(t, base, "mtu", "1500\n")
+	if err := os.MkdirAll(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(sys, "devices/pci0000:00/0000:00:03.0"), filepath.Join(base, "device")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(sys, "class/net/veth0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	collector := &Collector{sysRoot: sys}
+	first := model.Snapshot{Networks: []model.Network{}}
+	if err := collector.collectNetworks(&first, &rawCounters{networks: map[string]networkCounter{}}, true); err != nil {
+		t.Fatal(err)
+	}
+	cached := collector.ethtoolCache
+	if cached == nil {
+		t.Fatal("expected ethtool cache to be populated")
+	}
+	second := model.Snapshot{Networks: []model.Network{}}
+	if err := collector.collectNetworks(&second, &rawCounters{networks: map[string]networkCounter{}}, false); err != nil {
+		t.Fatal(err)
+	}
+	if len(collector.ethtoolCache) != len(cached) {
+		t.Fatal("light snapshot must not refresh the ethtool cache")
+	}
+	if len(first.Networks) != 1 || len(second.Networks) != 1 {
+		t.Fatalf("unexpected network counts: %d/%d", len(first.Networks), len(second.Networks))
+	}
+}
+
+func TestCollectTopProcessesRates(t *testing.T) {
+	proc := t.TempDir()
+	writeFixture(t, filepath.Join(proc, "1"), "comm", "init\n")
+	writeFixture(t, filepath.Join(proc, "1"), "stat", "1 (init) S 0 1 1 0 -1 4194560 100 0 0 0 1 1 0 0 20 0 1 0 1 0 0\n")
+	writeFixture(t, filepath.Join(proc, "1"), "statm", "100 50 0 1 0 3 0\n")
+	writeFixture(t, filepath.Join(proc, "2"), "comm", "worker\n")
+	writeFixture(t, filepath.Join(proc, "2"), "stat", "2 (worker) S 1 2 2 0 -1 4194560 100 0 0 0 11 11 0 0 20 0 1 0 2 0 0\n")
+	writeFixture(t, filepath.Join(proc, "2"), "statm", "200 100 0 1 0 3 0\n")
+	collector := &Collector{procRoot: proc}
+	raw := &rawCounters{processes: map[int]uint64{}}
+	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{}}
+	if err := collector.collectTopProcesses(&snapshot, raw, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.TopProcesses) != 2 || snapshot.TopProcesses[0].CPUPercent != 0 || snapshot.TopProcesses[0].RSSBytes == 0 {
+		t.Fatalf("unexpected first sample: %#v", snapshot.TopProcesses)
+	}
+	writeFixture(t, filepath.Join(proc, "2"), "stat", "2 (worker) S 1 2 2 0 -1 4194560 100 0 0 0 21 21 0 0 20 0 1 0 3 0 0\n")
+	if err := collector.collectTopProcesses(&snapshot, raw, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.TopProcesses) != 2 {
+		t.Fatalf("unexpected second sample count: %#v", snapshot.TopProcesses)
+	}
+	worker := snapshot.TopProcesses[0]
+	if worker.PID != 2 || worker.CPUPercent < 19 || worker.CPUPercent > 23 || worker.Name != "worker" || worker.State != "S" {
+		t.Fatalf("unexpected top consumer: %#v", worker)
+	}
+}
+
+func BenchmarkParseProcessJiffies(b *testing.B) {
+	value := "1234 (qemu-system-x86_64) S 0 1 1 0 -1 4194560 100 0 0 0 999 888 0 0 20 0 1 0 12345 0 0"
+	for i := 0; i < b.N; i++ {
+		parseProcessJiffies(value)
+	}
+}
+
+func BenchmarkParseProcessIO(b *testing.B) {
+	value := "rchar: 123456\nwchar: 654321\nsyscr: 10\nsyscw: 20\nread_bytes: 1000\nwrite_bytes: 2000\ncancelled_write_bytes: 0\n"
+	for i := 0; i < b.N; i++ {
+		parseProcessIO(value)
 	}
 }
 

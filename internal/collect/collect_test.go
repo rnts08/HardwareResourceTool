@@ -257,6 +257,62 @@ func TestWalkPCICapabilitiesBoundsMalformedChains(t *testing.T) {
 	}
 }
 
+func TestCollectThermalReadsZonesSensorsAndFans(t *testing.T) {
+	sys := t.TempDir()
+	zone := filepath.Join(sys, "class/thermal/thermal_zone0")
+	writeFixture(t, zone, "type", "x86_pkg_temp\n")
+	writeFixture(t, zone, "policy", "step_wise\n")
+	writeFixture(t, zone, "mode", "enabled\n")
+	writeFixture(t, zone, "temp", "45000\n")
+	writeFixture(t, zone, "trip_point_0_temp", "100000\n")
+	writeFixture(t, zone, "trip_point_0_type", "critical\n")
+	hwmon := filepath.Join(sys, "class/hwmon/hwmon0")
+	writeFixture(t, hwmon, "name", "coretemp\n")
+	writeFixture(t, hwmon, "temp1_label", "Package id 0\n")
+	writeFixture(t, hwmon, "temp1_input", "45200\n")
+	writeFixture(t, hwmon, "temp1_max", "80000\n")
+	writeFixture(t, hwmon, "temp1_crit", "100000\n")
+	writeFixture(t, hwmon, "temp1_alarm", "1\n")
+	writeFixture(t, hwmon, "fan1_input", "2400\n")
+	writeFixture(t, hwmon, "fan1_min", "600\n")
+	writeFixture(t, hwmon, "fan1_max", "5000\n")
+	snapshot := model.Snapshot{}
+	if err := (&Collector{sysRoot: sys}).collectThermal(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Thermal.Zones) != 1 {
+		t.Fatalf("expected 1 thermal zone, got %#v", snapshot.Thermal.Zones)
+	}
+	zoneData := snapshot.Thermal.Zones[0]
+	if zoneData.Type != "x86_pkg_temp" || zoneData.Current != 45 || zoneData.Critical != 100 || zoneData.Policy != "step_wise" {
+		t.Fatalf("unexpected thermal zone: %#v", zoneData)
+	}
+	if len(snapshot.Thermal.Sensors) != 1 {
+		t.Fatalf("expected 1 temperature sensor, got %#v", snapshot.Thermal.Sensors)
+	}
+	sensor := snapshot.Thermal.Sensors[0]
+	if sensor.Label != "Package id 0" || sensor.Source != "coretemp" || sensor.Kind != "cpu" || sensor.Current != 45.2 || sensor.Critical != 100 || !sensor.Alarm {
+		t.Fatalf("unexpected temperature sensor: %#v", sensor)
+	}
+	if len(snapshot.Thermal.Fans) != 1 {
+		t.Fatalf("expected 1 fan, got %#v", snapshot.Thermal.Fans)
+	}
+	if snapshot.Thermal.Fans[0].Input != 2400 || snapshot.Thermal.Fans[0].Min != 600 {
+		t.Fatalf("unexpected fan: %#v", snapshot.Thermal.Fans[0])
+	}
+}
+
+func TestCollectThermalEmptyWhenNoSensors(t *testing.T) {
+	sys := t.TempDir()
+	snapshot := model.Snapshot{}
+	if err := (&Collector{sysRoot: sys}).collectThermal(&snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Thermal.Zones) != 0 || len(snapshot.Thermal.Sensors) != 0 || len(snapshot.Thermal.Fans) != 0 {
+		t.Fatalf("expected empty thermal, got %#v", snapshot.Thermal)
+	}
+}
+
 func writeFixture(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.MkdirAll(dir, 0o755); err != nil {

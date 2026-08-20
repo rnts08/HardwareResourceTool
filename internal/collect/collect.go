@@ -67,6 +67,9 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectSystem(&snapshot, &current); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
+	if err := c.collectThermal(&snapshot); err != nil {
+		snapshot.Errors = append(snapshot.Errors, err.Error())
+	}
 	if err := c.collectVirtualization(&snapshot, &current, now.Sub(c.prevAt).Seconds()); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}

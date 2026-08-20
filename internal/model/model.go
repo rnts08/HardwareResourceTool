@@ -6,6 +6,7 @@ const SchemaVersion = "1"
 
 type Snapshot struct {
 	CollectedAt         time.Time      `json:"collected_at"`
+	CollectDurationMS   int64          `json:"collect_duration_ms,omitempty"`
 	CPU                 CPU            `json:"cpu"`
 	Memory              Memory         `json:"memory"`
 	Disks               []Disk         `json:"disks"`
@@ -15,6 +16,7 @@ type Snapshot struct {
 	PCI                 []PCIDevice    `json:"pci_devices"`
 	MemoryDevices       []MemoryDevice `json:"memory_devices"`
 	GPUs                []GPU          `json:"gpus"`
+	Thermal             Thermal        `json:"thermal"`
 	Virtualization      Virtualization `json:"virtualization"`
 	NUMA                NUMA           `json:"numa"`
 	System              SystemSettings `json:"system"`
@@ -248,6 +250,44 @@ type MemoryDevice struct {
 	ConfiguredSpeedMTs uint64 `json:"configured_speed_mts,omitempty"`
 	CorrectedErrors    uint64 `json:"corrected_errors,omitempty"`
 	UncorrectedErrors  uint64 `json:"uncorrected_errors,omitempty"`
+}
+
+type Thermal struct {
+	Zones   []ThermalZone `json:"thermal_zones"`
+	Sensors []Temperature `json:"temperature_sensors"`
+	Fans    []FanSpeed    `json:"fans"`
+}
+
+type ThermalZone struct {
+	Name     string  `json:"name"`
+	Type     string  `json:"type,omitempty"`
+	Current  float64 `json:"current_celsius,omitempty"`
+	Critical float64 `json:"critical_celsius,omitempty"`
+	Passive  float64 `json:"passive_celsius,omitempty"`
+	Policy   string  `json:"policy,omitempty"`
+	Mode     string  `json:"mode,omitempty"`
+}
+
+type Temperature struct {
+	Name     string  `json:"name"`
+	Sensor   string  `json:"sensor,omitempty"`
+	Label    string  `json:"label,omitempty"`
+	Source   string  `json:"source,omitempty"`
+	Kind     string  `json:"kind,omitempty"`
+	Current  float64 `json:"current_celsius,omitempty"`
+	Max      float64 `json:"max_celsius,omitempty"`
+	Critical float64 `json:"critical_celsius,omitempty"`
+	Alarm    bool    `json:"alarm,omitempty"`
+}
+
+type FanSpeed struct {
+	Name   string `json:"name"`
+	Sensor string `json:"sensor,omitempty"`
+	Label  string `json:"label,omitempty"`
+	Source string `json:"source,omitempty"`
+	Input  uint64 `json:"input_rpm"`
+	Min    uint64 `json:"min_rpm,omitempty"`
+	Max    uint64 `json:"max_rpm,omitempty"`
 }
 
 type NUMA struct {

@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.10.6` (`v0.10.6`). It is focused on Linux hosts,
+The current release is `0.11.0` (`v0.11.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -35,6 +35,10 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   IOMMU groups, AER status, and PCI/bridge NUMA locality.
 - SMBIOS memory-device inventory and EDAC corrected/uncorrected counters when
   Linux exposes them.
+- Host thermal telemetry from `/sys/class/thermal` zones and `/sys/class/hwmon`
+  sensors: zone type and trip thresholds, per-sensor temperature/max/critical
+  limits and alarm flags, and fan speed in RPM. GPU temperature continues to be
+  reported through NVML.
 - NVIDIA PCI identity plus optional dynamically loaded NVML identity, UUID,
   device and running-process framebuffer memory accounting, utilization,
   temperature, power, ECC, and MIG-mode telemetry. GPUs assigned to KVM
@@ -109,7 +113,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.10.6 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.11.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -169,13 +173,25 @@ sudo ./hardware-resources tui --interval 2s
 The interval has a 500 ms minimum. The dashboard keeps at most 60 snapshots
 for its CPU-idle and memory-used sparklines. Use:
 
-- `1`–`5` to select Overview, Storage, Network, Findings, or Hardware.
+- `1`–`6` to select Overview, Storage, Network, Findings, Hardware, or Thermal.
 - `Tab`, Right arrow, or `l` for the next view.
 - `Shift+Tab`, Left arrow, or `h` for the previous view.
+- `j`/`k` and Page Up/Down to scroll the active view vertically.
+- `<`/`>` or Shift+arrows to scroll the active view horizontally.
+- `Space` to pause and resume live collection.
+- `r` to force a refresh before the next interval.
+- `?` for help.
 - `q` or `Ctrl+C` to exit.
 
+Findings are color-coded by severity (critical, warning, info) and collection
+is gated so a slow snapshot cannot overlap the next one. The TUI accepts the
+same `--cpu-idle-critical`, `--iowait-warning`, `--memory-used-critical`,
+`--filesystem-used-warning`, and `--filesystem-used-critical` flags as
+`check`/`report`, so live findings match report findings.
+
 The view renderer clips narrow or short terminals instead of assuming a fixed
-terminal size. Collection errors are shown at the bottom of the dashboard.
+terminal size; clipped content can be reached with the scroll keys. Collection
+errors are shown at the bottom of the dashboard.
 
 ## Root live capture
 

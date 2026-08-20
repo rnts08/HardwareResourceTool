@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.11.0 — 2026-08-20
+
+- Added read-only host thermal telemetry from `/sys/class/thermal` thermal
+  zones (type, current/critical/passive trip points, policy, mode) and
+  `/sys/class/hwmon` sensors (per-sensor temperature, max/critical limits,
+  alarm flags, and fan speed in RPM), with sensor kind classification
+  (cpu/gpu/disk/board) and exposure in JSON, text, and TUI output.
+- Added thermal advisory findings for temperatures approaching critical
+  thresholds, active thermal alarms, and fans reporting no rotation.
+- Added a Thermal tab (key `6`) to the TUI.
+- Reworked the TUI refresh loop so a slow snapshot cannot overlap or race the
+  next one; collection is gated by an in-progress flag while the timer chain
+  keeps the dashboard live.
+- Added vertical (`j`/`k`, PgUp/PgDn, mouse wheel) and horizontal (`<`/`>`)
+  scrolling to every tab so previously clipped content is reachable.
+- Colorized findings and abnormal overview values by severity (critical,
+  warning, info) using the existing lipgloss dependency.
+- Added TUI pause/resume (`Space`), force refresh (`r`), and a `?` help
+  overlay.
+- Added `--cpu-idle-critical`, `--iowait-warning`, `--memory-used-critical`,
+  `--filesystem-used-warning`, and `--filesystem-used-critical` flags to the
+  `tui` command so live findings match `check`/`report` thresholds.
+- Added a first-sample "rates appear after the second sample" hint, a
+  collection-duration readout, and a bounded collector-errors line in the
+  header/footer.
+
 ## 0.10.6 — 2026-08-17
 
 - Added `INSTALL.md` covering Makefile installation, sudoers, file

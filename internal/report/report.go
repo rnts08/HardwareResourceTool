@@ -92,6 +92,22 @@ func WriteText(w io.Writer, result model.Report) error {
 		}
 	}
 	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
+	if len(result.Snapshot.Thermal.Zones) > 0 || len(result.Snapshot.Thermal.Sensors) > 0 || len(result.Snapshot.Thermal.Fans) > 0 {
+		fmt.Fprintf(w, "Thermal: %d zones, %d temperature sensors, %d fans\n", len(result.Snapshot.Thermal.Zones), len(result.Snapshot.Thermal.Sensors), len(result.Snapshot.Thermal.Fans))
+		for _, zone := range result.Snapshot.Thermal.Zones {
+			fmt.Fprintf(w, "  Thermal zone: %s %s %.1f C, critical %.1f C, passive %.1f C, policy %s, mode %s\n", zone.Name, zone.Type, zone.Current, zone.Critical, zone.Passive, zone.Policy, zone.Mode)
+		}
+		for _, sensor := range result.Snapshot.Thermal.Sensors {
+			alarm := ""
+			if sensor.Alarm {
+				alarm = ", ALARM"
+			}
+			fmt.Fprintf(w, "  Temperature: %s %s %s %.1f C, max %.1f C, critical %.1f C%s\n", sensor.Name, sensor.Label, sensor.Source, sensor.Current, sensor.Max, sensor.Critical, alarm)
+		}
+		for _, fan := range result.Snapshot.Thermal.Fans {
+			fmt.Fprintf(w, "  Fan: %s %s %d RPM, min %d, max %d\n", fan.Name, fan.Label, fan.Input, fan.Min, fan.Max)
+		}
+	}
 	fmt.Fprintf(w, "Findings: %d\n", len(result.Findings))
 	for _, finding := range result.Findings {
 		fmt.Fprintf(w, "- [%s] %s: %s\n  Recommendation: %s\n", finding.Severity, finding.Title, finding.Evidence, finding.Recommendation)

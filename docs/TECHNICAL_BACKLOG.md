@@ -94,6 +94,110 @@ guest-reported and is kept separate from host cgroup/RSS values. QMP remains
 optional because the collector must not send mutating commands or assume
 socket access.
 
+## M0.2.10 — TUI experience and collection performance
+
+Status: partially implemented in `0.11.0`; the remaining items are the
+detail pane, mouse tab clicks, capture comparison, and per-VM availability
+surface.
+
+Goal: make the live dashboard reliable on large hosts and actually usable for
+inspection. Collection on a busy host (many VMs and NICs) can exceed the
+refresh interval, so the TUI must gate work, expose data that currently gets
+clipped away, and make abnormal state visually obvious.
+
+Work items:
+
+- Gate concurrent collection: track an in-progress snapshot and skip or
+  coalesce refreshes when the previous collection has not finished. Today a
+  new `collectNow` fires on every `tickMsg` regardless of completion, so
+  overlapping `Snapshot()` calls can race on the collector's `prev`/`prevAt`/
+  `hardware` state when collection time exceeds the interval. Implemented in
+  `0.11.0`; the tick chain now waits while a collection is in flight.
+- Throttle heavy per-snapshot telemetry (QMP queries, ethtool netlink,
+  kernel-log tails, and per-VM `numa_maps`/`smaps_rollup`) to every Nth
+  snapshot and cache static ethtool metadata so fast metrics stay fresh while
+  slow ones do not stall the dashboard. Remaining work.
+- Add vertical paging to the Findings, Hardware, Network, and Storage views
+  (`j`/`k`, PgUp/PgDn, and mouse wheel). The current `fitView` truncation
+  message says to switch tabs for detail, but every tab clips the same way, so
+  the detail is unreachable. Implemented in `0.11.0`.
+- Add horizontal scrolling so long Network and VM lines are revealed instead
+  of being silently ellipsized and lost on normal terminal widths.
+  Implemented in `0.11.0`.
+- Add severity and abnormal-value colorization: critical/warning/info
+  findings plus notable values such as swap activity, near-full filesystems,
+  and non-zero ECC/AER/kernel-event counters. Findings severity and overview
+  abnormal lines implemented in `0.11.0`; abnormal value colorization beyond
+  the overview remains open.
+- On the first snapshot, show a "waiting for second sample" indicator instead
+  of zero rates and a flat sparkline; rates are only meaningful after two
+  samples. Implemented in `0.11.0`.
+- Add a pause/freeze hotkey so an operator can hold a snapshot for inspection
+  without the view churning underneath them. Implemented in `0.11.0` (`Space`).
+- Add a `?` help overlay showing the full keymap, refresh interval, and
+  active thresholds. Implemented in `0.11.0`.
+- Enable mouse support (tab clicks and wheel scrolling) through bubbletea's
+  mouse options. Wheel scrolling implemented in `0.11.0`; tab clicks remain
+  open.
+- Accept the same threshold flags as `check`/`report` so live findings match
+  report findings instead of always using hardcoded defaults. Implemented in
+  `0.11.0`.
+- Add a focused detail pane for devices and VMs (selected item expands to show
+  balloon/QMP/disks/NICs/NUMA breakdown) instead of one enormous line per item.
+  Remaining work.
+- TUI polish: render the stored `err` field, bound and summarize the
+  collector-errors line so it cannot crowd the layout, and show collection
+  duration/refresh rate in the header. Implemented in `0.11.0`.
+
+Additional collection and reporting recommendations:
+
+- Cache static ethtool metadata and stale heavy telemetry (QMP, ethtool, log
+  tails, `numa_maps`) to cut per-snapshot cost in `report`/`check` as well as
+  the TUI. Remaining work.
+- Add a top CPU/memory consumers view (per-process, including which QEMU
+  process is hot) as a natural next diagnostic. Remaining work.
+- Add capture-to-capture comparison for two `report --json` outputs, or longer
+  per-tab history, for before/after maintenance and migration reviews.
+  Remaining work.
+- Report kernel events as per-interval deltas rather than cumulative totals in
+  live views. Remaining work.
+- Surface per-VM availability when QMP/cgroup telemetry is unavailable instead
+  of silently dropping fields. Remaining work.
+
+Acceptance: no concurrent collection on a slow host, all list views are
+scrollable, long lines are reachable horizontally, findings and abnormal values
+are visually distinct, and the TUI reports thresholds consistent with
+`check`/`report`.
+
+## M0.3.0 — thermal telemetry
+
+Status: implemented in `0.11.0`; power/energy sensor reads and thermal sensor
+correlation with PCI/NUMA/GPU inventory remain open.
+
+Goal: add read-only host thermal collection and presentation. Temperature,
+fan speed, and related thermal state are obvious gaps for a host diagnostics
+tool that already reports GPU temperature through NVML.
+
+Work items:
+
+- Read CPU package/socket, board, GPU, and drive temperatures from hwmon
+  (`/sys/class/hwmon`) and thermal zones (`/sys/class/thermal/thermal_zone*`),
+  including zone type, current/critical temperatures, and throttling state.
+  Implemented in `0.11.0`.
+- Read fan speeds (RPM) and fan counts when hwmon exposes them, plus any
+  available power/energy sensors from the same devices. Fan speeds implemented
+  in `0.11.0`; power/energy sensors remain open.
+- Correlate thermal sensors with the existing PCI/NUMA/GPU inventory where
+  possible. Remaining work.
+- Present thermal values in `check`/`report` text and JSON output and in the
+  TUI, with advisory findings for temperature approaching critical thresholds.
+  Implemented in `0.11.0` (including a Thermal tab).
+- Keep everything read-only; absent sensors and drivers must produce explicit
+  unknown/availability state and no crash. Implemented in `0.11.0`.
+
+Acceptance: reports and the TUI show available temperatures and fan speeds with
+clear availability state, and no external `sensors` process is executed.
+
 ## Cross-cutting completion work
 
 - Add integration captures from Intel, Broadcom, NVIDIA/Mellanox, Marvell, and

@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.10.6. Hardware Resources Tool is a read-only
+This manual describes release 0.11.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.10.6 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.11.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -133,8 +133,9 @@ Use a non-zero interval when interpreting rates. --duration accepts 500ms,
 ### tui
 
 tui starts the live dashboard. The interval has a 500 ms minimum. The
-dashboard keeps at most 60 snapshots for sparklines and clips narrow or short
-terminals instead of assuming a fixed terminal size.
+dashboard keeps at most 60 snapshots for sparklines. Collection is gated so a
+slow snapshot cannot overlap the next one, and it accepts the same threshold
+flags as `check` and `report` so live findings match report findings.
 
 ### version
 
@@ -143,9 +144,13 @@ and UTC build time. It does not require root.
 
 ## 4. TUI windows and controls
 
-The five windows are Overview, Storage, Network, Findings, and Hardware.
-Select them with 1–5. Tab, Right arrow, and l move forward. Shift+Tab, Left
-arrow, and h move backward. q or Ctrl+C exits.
+The six windows are Overview, Storage, Network, Findings, Hardware, and
+Thermal. Select them with 1–6. Tab, Right arrow, and l move forward.
+Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down scroll the
+active window vertically; < and > or Shift+arrows scroll it horizontally;
+Space pauses and resumes collection; r forces an immediate refresh; ? shows
+help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
+warning, info).
 
 ### Overview
 
@@ -232,6 +237,17 @@ KVM/QEMU rows show VMID where available, running state, configured vCPUs, proces
 configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
 memory, and NUMA nodes. Memory-device rows show locator, size, type, speed,
 configured speed, and EDAC corrected/uncorrected errors where available.
+
+### Thermal
+
+Thermal zones show zone name, type (for example `x86_pkg_temp`), current
+temperature, critical and passive trip thresholds, governor policy, and mode.
+Temperature-sensor rows show the hwmon device and source, the sensor index,
+label, kind (cpu/gpu/disk/board), current/max/critical temperatures, and an
+ALARM marker when the sensor raises one. Fan rows show the fan index, label,
+and current/min/max speed in RPM. A zero fan speed with a defined range is
+flagged as a warning, and sensors at or above 90% of their critical threshold
+are highlighted. Absent sensors produce an empty window rather than an error.
 
 ## 5. Text report interpretation
 
@@ -345,6 +361,17 @@ NMI watchdog, plus bounded kernel_events counts and recent matching log lines.
 The event scan reads only the tails of existing text logs under `/var/log`; it
 does not invoke `dmesg`, read kernel message streams, traverse the journal, or
 write anything. collector_errors lists non-fatal source failures.
+
+### Thermal
+
+thermal.thermal_zones is a list of kernel thermal zones with name, type,
+current_celsius, critical_celsius, passive_celsius, policy, and mode.
+thermal.temperature_sensors is a list of hwmon temperature sensors with
+device name, sensor index, label, source (the hwmon `name`), kind
+(cpu/gpu/disk/board), current/max/critical_celsius, and alarm.
+thermal.fans is a list of hwmon fans with device name, sensor index, label,
+source, and input_rpm/min_rpm/max_rpm. Absent values use omitempty and are
+not proof that the sensor does not exist.
 
 ## 7. Applying findings safely
 

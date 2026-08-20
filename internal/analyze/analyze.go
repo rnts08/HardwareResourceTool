@@ -146,5 +146,23 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 	if len(s.Errors) > 0 {
 		findings = append(findings, model.Finding{Severity: "warning", Category: "collection", Title: "Some metrics were unavailable", Evidence: fmt.Sprintf("%d collector errors were reported", len(s.Errors)), Recommendation: "Review collector_errors in the JSON report before treating this assessment as complete."})
 	}
+	for _, zone := range s.Thermal.Zones {
+		if zone.Critical > 0 && zone.Current > 0 && zone.Current >= zone.Critical*0.9 {
+			findings = append(findings, model.Finding{Severity: "critical", Category: "thermal", Title: "Thermal zone is near its critical temperature", Evidence: fmt.Sprintf("%s (%s) is %.1f C against a critical threshold of %.1f C", zone.Name, zone.Type, zone.Current, zone.Critical), Recommendation: "Reduce load and verify cooling, airflow, fans, and chassis ambient temperature before continuing heavy workloads."})
+		}
+	}
+	for _, sensor := range s.Thermal.Sensors {
+		if sensor.Critical > 0 && sensor.Current > 0 && sensor.Current >= sensor.Critical*0.9 {
+			findings = append(findings, model.Finding{Severity: "critical", Category: "thermal", Title: "Sensor temperature is near its critical threshold", Evidence: fmt.Sprintf("%s %s is %.1f C against a critical threshold of %.1f C", sensor.Name, sensor.Label, sensor.Current, sensor.Critical), Recommendation: "Inspect cooling, airflow, fan operation, and ambient temperature; reduce sustained load if the trend continues."})
+		}
+		if sensor.Alarm {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "thermal", Title: "Thermal alarm is active", Evidence: fmt.Sprintf("%s %s raises a thermal alarm at %.1f C", sensor.Name, sensor.Label, sensor.Current), Recommendation: "Correlate the alarm with temperature history, fan behavior, and ambient conditions before continuing the workload."})
+		}
+	}
+	for _, fan := range s.Thermal.Fans {
+		if fan.Input == 0 && (fan.Min > 0 || fan.Max > 0) {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "thermal", Title: "Fan is reporting no rotation", Evidence: fmt.Sprintf("%s %s reports %d RPM", fan.Name, fan.Label, fan.Input), Recommendation: "Verify fan power, connector seating, and controller operation; a stalled fan can cause thermal throttling or hardware damage."})
+		}
+	}
 	return findings
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"hardware-resources-tool/internal/analyze"
 	"hardware-resources-tool/internal/collect"
 	"hardware-resources-tool/internal/model"
@@ -16,24 +17,46 @@ const historyLimit = 60
 type tickMsg time.Time
 
 type modelState struct {
-	collector *collect.Collector
-	interval  time.Duration
-	snapshot  model.Snapshot
-	history   []model.Snapshot
-	findings  []model.Finding
-	err       error
-	tab       int
-	width     int
-	height    int
+	collector   *collect.Collector
+	interval    time.Duration
+	thresholds  analyze.Thresholds
+	snapshot    model.Snapshot
+	history     []model.Snapshot
+	findings    []model.Finding
+	err         error
+	tab         int
+	width       int
+	height      int
+	offset      int
+	xoffset     int
+	collecting  bool
+	paused      bool
+	showHelp    bool
+	collectTime time.Duration
 }
 
-var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware"}
+var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware", "Thermal"}
 
-func Run(collector *collect.Collector, interval time.Duration) error {
+var (
+	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
+	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
+	infoStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+)
+
+// Control markers carried at the start of a plain-text line so the renderer
+// can colorize it after horizontal scrolling has been applied.
+const (
+	markCritical = "\x01c\x02"
+	markWarning  = "\x01w\x02"
+	markInfo     = "\x01i\x02"
+)
+
+func Run(collector *collect.Collector, interval time.Duration, thresholds analyze.Thresholds) error {
 	if interval < 500*time.Millisecond {
 		interval = 500 * time.Millisecond
 	}
-	_, err := tea.NewProgram(modelState{collector: collector, interval: interval}).Run()
+	m := modelState{collector: collector, interval: interval, thresholds: thresholds, collecting: true}
+	_, err := tea.NewProgram(m, tea.WithMouseCellMotion()).Run()
 	return err
 }
 
@@ -45,17 +68,59 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
-		case "1", "2", "3", "4", "5":
+		case "1", "2", "3", "4", "5", "6":
 			m.tab = int(msg.String()[0] - '1')
+			m.offset, m.xoffset = 0, 0
 		case "tab", "right", "l":
 			m.tab = (m.tab + 1) % len(tabs)
+			m.offset, m.xoffset = 0, 0
 		case "shift+tab", "left", "h":
 			m.tab = (m.tab + len(tabs) - 1) % len(tabs)
+			m.offset, m.xoffset = 0, 0
+		case "?":
+			m.showHelp = !m.showHelp
+		case " ":
+			m.paused = !m.paused
+			m.collecting = false
+			if !m.paused {
+				return m, tea.Batch(collectNow(m.collector), tick(m.interval))
+			}
+		case "j", "down", "pgdown", "ctrl+d", "ctrl+f":
+			m.offset += pageStep(m.height, msg.String())
+		case "k", "up", "pgup", "ctrl+u", "ctrl+b":
+			m.offset -= pageStep(m.height, msg.String())
+			if m.offset < 0 {
+				m.offset = 0
+			}
+		case "shift+right", ">":
+			m.xoffset += 8
+		case "shift+left", "<":
+			m.xoffset -= 8
+			if m.xoffset < 0 {
+				m.xoffset = 0
+			}
+		case "r":
+			if !m.paused && !m.collecting {
+				m.collecting = true
+				return m, collectNow(m.collector)
+			}
 		}
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+	case tea.MouseMsg:
+		switch msg.Type {
+		case tea.MouseWheelUp:
+			m.offset -= 3
+			if m.offset < 0 {
+				m.offset = 0
+			}
+		case tea.MouseWheelDown:
+			m.offset += 3
+		}
 	case model.Snapshot:
-		m.snapshot, m.findings, m.err = msg, analyze.Findings(msg), nil
+		m.collecting = false
+		m.snapshot, m.findings, m.err = msg, analyze.FindingsWithThresholds(msg, m.thresholds), nil
+		m.collectTime = time.Duration(msg.CollectDurationMS) * time.Millisecond
 		m.history = append(m.history, msg)
 		if len(m.history) > historyLimit {
 			m.history = m.history[len(m.history)-historyLimit:]
@@ -64,102 +129,282 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// would accumulate redraws when collection completes after a tick.
 		return m, nil
 	case tickMsg:
+		// Paused and in-flight collections never start a second snapshot, so
+		// slow collection cannot race or backlog. The tick chain continues so
+		// the dashboard resumes automatically.
+		if m.paused {
+			return m, nil
+		}
+		if m.collecting {
+			return m, tick(m.interval)
+		}
+		m.collecting = true
 		return m, tea.Batch(collectNow(m.collector), tick(m.interval))
 	}
 	return m, nil
 }
 
+func splitLines(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, "\n")
+}
+
+func pageStep(height int, key string) int {
+	switch key {
+	case "pgdown", "pgup":
+		if height > 3 {
+			return height - 3
+		}
+		return 12
+	case "ctrl+d", "ctrl+u", "ctrl+f", "ctrl+b":
+		return 6
+	default:
+		return 1
+	}
+}
+
 func (m modelState) View() string {
-	var b strings.Builder
-	b.WriteString("Hardware Resources — live host view\n")
-	b.WriteString("──────────────────────────────────────────────────────────────────────────────\n")
+	if m.showHelp {
+		return renderScrolled("", renderHelp(m.thresholds), "", m.width, m.height, 0, 0)
+	}
+	var header strings.Builder
+	header.WriteString("Hardware Resources — live host view\n")
+	header.WriteString("──────────────────────────────────────────────────────────────────────────────\n")
 	for i, tab := range tabs {
 		if i == m.tab {
-			fmt.Fprintf(&b, "[%d %s] ", i+1, tab)
+			fmt.Fprintf(&header, "[%d %s] ", i+1, tab)
 		} else {
-			fmt.Fprintf(&b, " %d %s  ", i+1, tab)
+			fmt.Fprintf(&header, " %d %s  ", i+1, tab)
 		}
 	}
-	fmt.Fprintf(&b, "\nSamples: %d/%d  Updated: %s\n\n", len(m.history), historyLimit, updatedAt(m.snapshot))
+	status := fmt.Sprintf("Samples: %d/%d  Updated: %s  interval %s", len(m.history), historyLimit, updatedAt(m.snapshot), m.interval)
+	if m.collecting {
+		status += "  collecting…"
+	}
+	if m.paused {
+		status += "  [paused]"
+	}
+	if m.collectTime > 0 {
+		status += fmt.Sprintf("  last collect %s", m.collectTime.Round(time.Millisecond))
+	}
+	header.WriteString("\n" + status + "\n\n")
 
+	content := m.tabContent()
+
+	var footer strings.Builder
+	if m.err != nil {
+		fmt.Fprintf(&footer, "Error: %v\n", m.err)
+	}
+	if len(m.snapshot.Errors) > 0 {
+		errors := strings.Join(m.snapshot.Errors, "; ")
+		if runes := []rune(errors); len(runes) > 400 {
+			errors = string(runes[:397]) + "..."
+		}
+		footer.WriteString("Collector errors: " + errors + "\n")
+	}
+	footer.WriteString("1-6: tabs  h/l prev/next  j/k scroll  </> horizontal  space pause  ? help  q quit")
+
+	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
+}
+
+func (m modelState) tabContent() string {
 	switch m.tab {
 	case 1:
-		viewStorage(&b, m.snapshot)
+		return viewStorage(m.snapshot)
 	case 2:
-		viewNetwork(&b, m.snapshot)
+		return viewNetwork(m.snapshot)
 	case 3:
-		viewFindings(&b, m.findings)
+		return viewFindings(m.findings)
 	case 4:
-		viewHardware(&b, m.snapshot)
+		return viewHardware(m.snapshot)
+	case 5:
+		return viewThermal(m.snapshot)
 	default:
-		viewOverview(&b, m.snapshot, m.history)
+		return viewOverview(m.snapshot, m.history, m.thresholds)
 	}
-
-	if len(m.snapshot.Errors) > 0 {
-		fmt.Fprintf(&b, "\nCollector errors: %s\n", strings.Join(m.snapshot.Errors, "; "))
-	}
-	b.WriteString("\n1-5: tabs  h/left: previous  l/right/tab: next  q: quit")
-	return fitView(b.String(), m.width, m.height)
 }
 
-func fitView(content string, width, height int) string {
-	lines := strings.Split(content, "\n")
-	if height > 0 && len(lines) > height {
-		if height == 1 {
-			lines = lines[:1]
+// renderScrolled clips content to the terminal. The header and footer stay
+// fixed; only the content region scrolls vertically by offset and every line
+// scrolls horizontally by xoffset. Colored lines are colorized only after
+// horizontal scrolling so ANSI sequences never interfere with slicing.
+func renderScrolled(header, content, footer string, width, height, offset, xoffset int) string {
+	headerLines := splitLines(header)
+	contentLines := splitLines(content)
+	footerLines := splitLines(footer)
+
+	body := contentLines
+	if height > 0 {
+		avail := height - len(headerLines) - len(footerLines)
+		if avail < 1 {
+			avail = 1
+		}
+		if len(contentLines) > avail {
+			maxOffset := len(contentLines) - avail
+			if offset > maxOffset {
+				offset = maxOffset
+			}
+			if offset < 0 {
+				offset = 0
+			}
+			end := offset + avail
+			if end > len(contentLines) {
+				end = len(contentLines)
+			}
+			body = contentLines[offset:end]
 		} else {
-			footer := lines[len(lines)-1]
-			lines = append(lines[:height-2], "… output truncated; switch tabs for detail", footer)
+			body = contentLines
 		}
 	}
+
+	all := append(append(append([]string{}, headerLines...), body...), footerLines...)
+
+	maxLine := 0
+	for _, line := range all {
+		if runes := len([]rune(line)); runes > maxLine {
+			maxLine = runes
+		}
+	}
+	maxX := 0
 	if width > 0 {
-		for i, line := range lines {
-			lines[i] = truncate(line, width)
+		maxX = maxLine - width
+		if maxX < 0 {
+			maxX = 0
 		}
 	}
-	return strings.Join(lines, "\n")
+	if xoffset > maxX {
+		xoffset = maxX
+	}
+	if xoffset < 0 {
+		xoffset = 0
+	}
+
+	out := make([]string, 0, len(all))
+	for _, line := range all {
+		scrolled, marker := scrollLine(line, width, xoffset)
+		out = append(out, applyColor(marker, scrolled))
+	}
+
+	if height > 0 && len(out) > height {
+		out = out[:height]
+	}
+	return strings.Join(out, "\n")
 }
 
-func truncate(value string, width int) string {
-	if width <= 0 || len([]rune(value)) <= width {
-		return value
+// scrollLine slices a plain-text line horizontally and separates any leading
+// color marker so it survives the slice.
+func scrollLine(line string, width, xoffset int) (string, string) {
+	marker := ""
+	for _, candidate := range []string{markCritical, markWarning, markInfo} {
+		if strings.HasPrefix(line, candidate) {
+			marker = candidate
+			line = strings.TrimPrefix(line, candidate)
+			break
+		}
 	}
-	runes := []rune(value)
-	if width == 1 {
-		return "…"
+	runes := []rune(line)
+	if xoffset > 0 {
+		if xoffset >= len(runes) {
+			runes = []rune{}
+		} else {
+			runes = runes[xoffset:]
+		}
 	}
-	return string(runes[:width-1]) + "…"
+	if width > 0 && len(runes) > width {
+		if width <= 1 {
+			return "…", marker
+		}
+		return string(runes[:width-1]) + "…", marker
+	}
+	return string(runes), marker
 }
 
-func viewOverview(b *strings.Builder, snapshot model.Snapshot, history []model.Snapshot) {
+func applyColor(marker, line string) string {
+	switch marker {
+	case markCritical:
+		return criticalStyle.Render(line)
+	case markWarning:
+		return warningStyle.Render(line)
+	case markInfo:
+		return infoStyle.Render(line)
+	}
+	trimmed := strings.TrimSpace(line)
+	switch {
+	case strings.HasPrefix(trimmed, "[critical]"):
+		return criticalStyle.Render(line)
+	case strings.HasPrefix(trimmed, "[warning]"):
+		return warningStyle.Render(line)
+	case strings.HasPrefix(trimmed, "[info]"):
+		return infoStyle.Render(line)
+	}
+	return line
+}
+
+func renderHelp(thresholds analyze.Thresholds) string {
+	return strings.Join([]string{
+		"Help",
+		"",
+		"  1-6 or h/l/tab     switch tabs (Overview, Storage, Network, Findings, Hardware, Thermal)",
+		"  j/k, PgUp/PgDn     scroll the active tab vertically",
+		"  </>, shift+arrows  scroll the active tab horizontally",
+		"  space              pause/resume live collection",
+		"  r                  force a refresh now",
+		"  ?                  toggle this help",
+		"  q / Ctrl+C         quit",
+		"",
+		fmt.Sprintf("  thresholds: cpu-idle critical <%.1f  iowait warning >%.1f", thresholds.CPUIdleCritical, thresholds.IOWaitWarning),
+		fmt.Sprintf("  memory-used critical >%.1f  filesystem warning >%.1f  filesystem critical >%.1f", thresholds.MemoryUsedCritical, thresholds.FilesystemUsedWarning, thresholds.FilesystemUsedCritical),
+		"",
+		"  Rates (throughput, percentages, swap activity) need two samples;",
+		"  the first snapshot establishes the counter baseline.",
+	}, "\n")
+}
+
+func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds analyze.Thresholds) string {
 	cpuIdle := historyValues(history, func(s model.Snapshot) float64 { return s.CPU.IdlePercent })
 	memoryUsed := historyValues(history, func(s model.Snapshot) float64 { return s.Memory.UsedPercent })
-	fmt.Fprintf(b, "CPU     %d logical  user %5.1f%%  system %5.1f%%  iowait %5.1f%%  idle %5.1f%%\n", snapshot.CPU.LogicalCPUs, snapshot.CPU.UserPercent, snapshot.CPU.SystemPercent, snapshot.CPU.IOWaitPercent, snapshot.CPU.IdlePercent)
-	fmt.Fprintf(b, "        load %.2f %.2f %.2f  ctxt %d/s  interrupts %d/s\n", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15, snapshot.CPU.ContextSwitch, snapshot.CPU.Interrupts)
-	fmt.Fprintf(b, "        idle   %s\n", sparkline(cpuIdle, 0, 100))
-	fmt.Fprintf(b, "Memory  used %5.1f%%  available %6.1f GiB  swap in/out %d/%d per sec\n", snapshot.Memory.UsedPercent, float64(snapshot.Memory.AvailableBytes)/(1024*1024*1024), snapshot.Memory.SwapInPerSec, snapshot.Memory.SwapOutPerSec)
-	fmt.Fprintf(b, "        used   %s\n", sparkline(memoryUsed, 0, 100))
-	fmt.Fprintf(b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
-	fmt.Fprintf(b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
-	fmt.Fprintf(b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
+	var b strings.Builder
+	cpuLine := fmt.Sprintf("CPU     %d logical  user %5.1f%%  system %5.1f%%  iowait %5.1f%%  idle %5.1f%%\n", snapshot.CPU.LogicalCPUs, snapshot.CPU.UserPercent, snapshot.CPU.SystemPercent, snapshot.CPU.IOWaitPercent, snapshot.CPU.IdlePercent)
+	if snapshot.CPU.LogicalCPUs > 0 && snapshot.CPU.IdlePercent < thresholds.CPUIdleCritical {
+		cpuLine = markCritical + cpuLine
+	}
+	b.WriteString(cpuLine)
+	fmt.Fprintf(&b, "        load %.2f %.2f %.2f  ctxt %d/s  interrupts %d/s\n", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15, snapshot.CPU.ContextSwitch, snapshot.CPU.Interrupts)
+	fmt.Fprintf(&b, "        idle   %s\n", sparkline(cpuIdle, 0, 100))
+	memoryLine := fmt.Sprintf("Memory  used %5.1f%%  available %6.1f GiB  swap in/out %d/%d per sec\n", snapshot.Memory.UsedPercent, float64(snapshot.Memory.AvailableBytes)/(1024*1024*1024), snapshot.Memory.SwapInPerSec, snapshot.Memory.SwapOutPerSec)
+	if snapshot.Memory.TotalBytes > 0 && snapshot.Memory.UsedPercent > thresholds.MemoryUsedCritical {
+		memoryLine = markCritical + memoryLine
+	}
+	b.WriteString(memoryLine)
+	fmt.Fprintf(&b, "        used   %s\n", sparkline(memoryUsed, 0, 100))
+	fmt.Fprintf(&b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
+	fmt.Fprintf(&b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
+	fmt.Fprintf(&b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
 	if events := snapshot.System.KernelEvents; len(events.Recent) > 0 || events.OOM+events.IOErrors+events.PCIeErrors+events.Hardware+events.NVIDIA+events.StorageResets+events.LinkFailures > 0 {
-		fmt.Fprintf(b, "        kernel events OOM %d  I/O %d  PCIe %d  HW %d  NVIDIA %d  storage resets %d  link failures %d\n", events.OOM, events.IOErrors, events.PCIeErrors, events.Hardware, events.NVIDIA, events.StorageResets, events.LinkFailures)
+		fmt.Fprintf(&b, "        kernel events OOM %d  I/O %d  PCIe %d  HW %d  NVIDIA %d  storage resets %d  link failures %d\n", events.OOM, events.IOErrors, events.PCIeErrors, events.Hardware, events.NVIDIA, events.StorageResets, events.LinkFailures)
 	}
 	if snapshot.Virtualization.QEMUDetected || snapshot.Virtualization.KVMAvailable || len(snapshot.Virtualization.VirtualMachines) > 0 {
-		fmt.Fprintf(b, "Virtualization  %s  VMs %d  allocated vCPU %d (%.2fx)  memory %s (%.2fx)\n", snapshot.Virtualization.Hypervisor, len(snapshot.Virtualization.VirtualMachines), snapshot.Virtualization.AllocatedVCPUs, snapshot.Virtualization.VCPUOvercommitRatio, formatBytes(snapshot.Virtualization.AllocatedMemoryBytes), snapshot.Virtualization.MemoryOvercommitRatio)
+		fmt.Fprintf(&b, "Virtualization  %s  VMs %d  allocated vCPU %d (%.2fx)  memory %s (%.2fx)\n", snapshot.Virtualization.Hypervisor, len(snapshot.Virtualization.VirtualMachines), snapshot.Virtualization.AllocatedVCPUs, snapshot.Virtualization.VCPUOvercommitRatio, formatBytes(snapshot.Virtualization.AllocatedMemoryBytes), snapshot.Virtualization.MemoryOvercommitRatio)
 	}
 	if len(snapshot.System.Sysctls) > 0 {
-		fmt.Fprintf(b, "        sysctls %v\n", snapshot.System.Sysctls)
+		fmt.Fprintf(&b, "        sysctls %v\n", snapshot.System.Sysctls)
 	}
+	if len(history) < 2 && snapshot.CPU.UserPercent == 0 && snapshot.CPU.SystemPercent == 0 && snapshot.CPU.IdlePercent == 0 {
+		b.WriteString("  Rates appear after the second sample; keep the dashboard running or press r to refresh.\n")
+	}
+	return b.String()
 }
 
-func viewStorage(b *strings.Builder, snapshot model.Snapshot) {
+func viewStorage(snapshot model.Snapshot) string {
+	var b strings.Builder
 	b.WriteString("Storage\n")
 	if len(snapshot.Disks) == 0 {
 		b.WriteString("  No block devices reported.\n")
 	}
 	for _, disk := range snapshot.Disks {
-		fmt.Fprintf(b, "  %-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d\n", disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight)
+		fmt.Fprintf(&b, "  %-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d\n", disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight)
 	}
 	b.WriteString("\nFilesystems\n")
 	for _, filesystem := range snapshot.Filesystems {
@@ -167,62 +412,106 @@ func viewStorage(b *strings.Builder, snapshot model.Snapshot) {
 		if filesystem.ReadOnly {
 			mode = "ro"
 		}
-		fmt.Fprintf(b, "  %-24s %-3s %5.1f%% used  available %10s  %s\n", filesystem.MountPoint, mode, filesystem.UsedPercent, formatBytes(filesystem.AvailableBytes), filesystem.Type)
+		fmt.Fprintf(&b, "  %-24s %-3s %5.1f%% used  available %10s  %s\n", filesystem.MountPoint, mode, filesystem.UsedPercent, formatBytes(filesystem.AvailableBytes), filesystem.Type)
 	}
 	if snapshot.VirtualNetworkCount > 0 {
-		fmt.Fprintf(b, "\n  Virtual/device-less interfaces filtered: %d\n", snapshot.VirtualNetworkCount)
+		fmt.Fprintf(&b, "\n  Virtual/device-less interfaces filtered: %d\n", snapshot.VirtualNetworkCount)
 	}
+	return b.String()
 }
 
-func viewNetwork(b *strings.Builder, snapshot model.Snapshot) {
+func viewNetwork(snapshot model.Snapshot) string {
+	var b strings.Builder
 	b.WriteString("Network\n")
 	if len(snapshot.Networks) == 0 {
 		b.WriteString("  No network interfaces reported.\n")
 	}
 	for _, network := range snapshot.Networks {
-		fmt.Fprintf(b, "  %-16s %-8s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		fmt.Fprintf(&b, "  %-16s %-8s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
 		if network.Driver != "" || network.LinkDuplex != "" || network.FECActive != "" {
-			fmt.Fprintf(b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d  max channels %d/%d/%d  pause %t/%t  ts %t phc %d  stats %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes), network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels, network.RXPause, network.TXPause, network.Timestamping, network.PHCIndex, len(network.DriverStats))
+			fmt.Fprintf(&b, "    driver %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d  max channels %d/%d/%d  pause %t/%t  ts %t phc %d  stats %d\n", network.Driver, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes), network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels, network.RXPause, network.TXPause, network.Timestamping, network.PHCIndex, len(network.DriverStats))
 		}
 	}
+	return b.String()
 }
 
-func viewFindings(b *strings.Builder, findings []model.Finding) {
+func viewFindings(findings []model.Finding) string {
+	var b strings.Builder
 	b.WriteString("Findings\n")
 	if len(findings) == 0 {
 		b.WriteString("  No findings.\n")
-		return
+		return b.String()
 	}
 	for _, finding := range findings {
-		fmt.Fprintf(b, "  [%s] %s\n    %s\n    Recommendation: %s\n", finding.Severity, finding.Title, finding.Evidence, finding.Recommendation)
+		fmt.Fprintf(&b, "  [%s] %s\n    %s\n    Recommendation: %s\n", finding.Severity, finding.Title, finding.Evidence, finding.Recommendation)
 	}
+	return b.String()
 }
 
-func viewHardware(b *strings.Builder, snapshot model.Snapshot) {
+func viewHardware(snapshot model.Snapshot) string {
+	var b strings.Builder
 	b.WriteString("PCIe devices\n")
 	for _, device := range snapshot.PCI {
-		fmt.Fprintf(b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), strings.Join(device.Capabilities, ","), device.Driver)
+		fmt.Fprintf(&b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), strings.Join(device.Capabilities, ","), device.Driver)
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
 		if gpu.PassedThrough {
-			fmt.Fprintf(b, "  %-16s %s:%s %s PASSED THROUGH (%s); host NVML unavailable\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, gpu.NVMLStatus)
+			fmt.Fprintf(&b, "  %-16s %s:%s %s PASSED THROUGH (%s); host NVML unavailable\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, gpu.NVMLStatus)
 		} else if gpu.NVML {
-			fmt.Fprintf(b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
+			fmt.Fprintf(&b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
 		} else {
-			fmt.Fprintf(b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
+			fmt.Fprintf(&b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
 		}
 	}
 	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
 		b.WriteString("\nKVM/QEMU domains\n")
 		for _, vm := range snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(b, "  %-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB huge/hugetlb %6.1f/%6.1f MiB QMP %s base/plug %6.1f/%6.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), vm.NUMANodes)
+			fmt.Fprintf(&b, "  %-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB huge/hugetlb %6.1f/%6.1f MiB QMP %s base/plug %6.1f/%6.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), vm.NUMANodes)
 		}
 	}
 	b.WriteString("\nMemory devices\n")
 	for _, memory := range snapshot.MemoryDevices {
-		fmt.Fprintf(b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)
+		fmt.Fprintf(&b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)
 	}
+	return b.String()
+}
+
+func viewThermal(snapshot model.Snapshot) string {
+	var b strings.Builder
+	b.WriteString("Thermal\n")
+	if len(snapshot.Thermal.Zones) == 0 && len(snapshot.Thermal.Sensors) == 0 && len(snapshot.Thermal.Fans) == 0 {
+		b.WriteString("  No thermal sensors reported.\n")
+		return b.String()
+	}
+	for _, zone := range snapshot.Thermal.Zones {
+		fmt.Fprintf(&b, "  %-14s %-18s current %6.1f C  critical %6.1f C  passive %6.1f C  policy %s  mode %s\n", zone.Name, zone.Type, zone.Current, zone.Critical, zone.Passive, zone.Policy, zone.Mode)
+	}
+	if len(snapshot.Thermal.Sensors) > 0 {
+		b.WriteString("\nTemperature sensors\n")
+		for _, sensor := range snapshot.Thermal.Sensors {
+			alarm := ""
+			if sensor.Alarm {
+				alarm = "  ALARM"
+			}
+			line := fmt.Sprintf("  %-8s %-8s %-20s %-10s current %6.1f C  max %6.1f C  critical %6.1f C%s\n", sensor.Name, sensor.Sensor, sensor.Label, sensor.Source, sensor.Current, sensor.Max, sensor.Critical, alarm)
+			if sensor.Alarm || (sensor.Critical > 0 && sensor.Current >= sensor.Critical*0.9) {
+				line = markWarning + line
+			}
+			b.WriteString(line)
+		}
+	}
+	if len(snapshot.Thermal.Fans) > 0 {
+		b.WriteString("\nFans\n")
+		for _, fan := range snapshot.Thermal.Fans {
+			line := fmt.Sprintf("  %-8s %-8s %-20s %6d RPM  min %d  max %d\n", fan.Name, fan.Sensor, fan.Label, fan.Input, fan.Min, fan.Max)
+			if fan.Input == 0 && (fan.Min > 0 || fan.Max > 0) {
+				line = markWarning + line
+			}
+			b.WriteString(line)
+		}
+	}
+	return b.String()
 }
 
 func historyValues(history []model.Snapshot, value func(model.Snapshot) float64) []float64 {
@@ -278,7 +567,11 @@ func updatedAt(snapshot model.Snapshot) string {
 }
 
 func collectNow(collector *collect.Collector) tea.Cmd {
-	return func() tea.Msg { return collector.Snapshot() }
+	return func() tea.Msg {
+		snapshot := collector.Snapshot()
+		snapshot.CollectDurationMS = time.Since(snapshot.CollectedAt).Milliseconds()
+		return snapshot
+	}
 }
 
 func tick(interval time.Duration) tea.Cmd {

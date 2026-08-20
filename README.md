@@ -33,8 +33,10 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   Virtual or device-less interfaces are counted separately rather than being
   presented as physical hardware.
 - PCI inventory and read-only capability parsing, negotiated versus maximum
-  PCIe links, upstream path bottlenecks, BAR totals, SR-IOV relationships,
-  IOMMU groups, AER status, and PCI/bridge NUMA locality.
+  PCIe links, upstream path bottlenecks, structured BAR entries (type,
+  prefetchable, 64-bit, ROM), bridge resource windows, SR-IOV relationships,
+  IOMMU groups, AER status, and PCI/bridge NUMA locality with cross-NUMA and
+  isolation findings.
 - SMBIOS memory-device inventory and EDAC corrected/uncorrected counters when
   Linux exposes them.
 - Host thermal telemetry from `/sys/class/thermal` zones and `/sys/class/hwmon`

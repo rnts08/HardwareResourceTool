@@ -492,6 +492,8 @@ func pciDetail(device model.PCIDevice) (string, []string) {
 		fmt.Sprintf("  parent           %s  PF %s", device.PCIeParentAddress, device.PCIePFAddress),
 		fmt.Sprintf("  VFs              %v", device.PCIeVFAddresses),
 		fmt.Sprintf("  BAR total        %s (%d) above4g=%t", formatBytes(device.BARTotalBytes), device.BARCount, device.BARAbove4G),
+		fmt.Sprintf("  BAR layout       %s", pciBARSummary(device)),
+		fmt.Sprintf("  ROM              %t  resource windows %v", device.ROM, device.ResourceWindows),
 		fmt.Sprintf("  AER              uncorrectable %d  correctable %d", device.AERUncorrectableStatus, device.AERCorrectableStatus),
 		fmt.Sprintf("  SR-IOV total VFs %d  resizable BAR %t", device.SRIOVTotalVFs, device.ResizableBAR),
 	}
@@ -502,6 +504,38 @@ func pciDetail(device model.PCIDevice) (string, []string) {
 		lines = append(lines, fmt.Sprintf("  path             %v", device.PCIePath))
 	}
 	return "PCI " + device.Address, lines
+}
+
+func pciBARSummary(device model.PCIDevice) string {
+	if len(device.BARs) == 0 {
+		return "none"
+	}
+	memory, memory64, io, prefetch := 0, 0, 0, 0
+	for _, bar := range device.BARs {
+		switch bar.Type {
+		case "io":
+			io++
+		case "64-bit memory":
+			memory64++
+		case "memory":
+			memory++
+		}
+		if bar.Prefetchable {
+			prefetch++
+		}
+	}
+	return fmt.Sprintf("mem %d  64-bit %d  io %d  prefetch %d", memory, memory64, io, prefetch)
+}
+
+func pciBARSummarySuffix(device model.PCIDevice) string {
+	suffix := ""
+	if device.ROM {
+		suffix += " rom"
+	}
+	if len(device.ResourceWindows) > 0 {
+		suffix += fmt.Sprintf(" win%d", len(device.ResourceWindows))
+	}
+	return suffix
 }
 
 func (m modelState) tabContent() string {
@@ -786,7 +820,7 @@ func viewHardware(snapshot model.Snapshot) string {
 	var b strings.Builder
 	b.WriteString("PCIe devices\n")
 	for _, device := range snapshot.PCI {
-		fmt.Fprintf(&b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), strings.Join(device.Capabilities, ","), device.Driver)
+		fmt.Fprintf(&b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), pciBARSummarySuffix(device), strings.Join(device.Capabilities, ","), device.Driver)
 	}
 	b.WriteString("\nNVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {

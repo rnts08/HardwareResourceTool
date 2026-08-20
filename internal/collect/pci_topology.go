@@ -2,6 +2,7 @@ package collect
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -9,6 +10,14 @@ import (
 	"strings"
 
 	"hardware-resources-tool/internal/model"
+)
+
+const (
+	ioresourceIO       = 0x00000100
+	ioresourceMem      = 0x00000200
+	ioresourcePrefetch = 0x00001000
+	ioresourceReadonly = 0x00002000
+	ioresourceMem64    = 0x00100000
 )
 
 var pciAddressPattern = regexp.MustCompile(`^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$`)
@@ -66,23 +75,55 @@ func collectPCIResources(path string, device *model.PCIDevice) {
 		return
 	}
 	defer file.Close()
+	index := 0
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		fields := strings.Fields(scanner.Text())
-		if len(fields) < 2 {
+		if len(fields) < 3 {
+			index++
 			continue
 		}
 		start, startErr := strconv.ParseUint(strings.TrimPrefix(fields[0], "0x"), 16, 64)
 		end, endErr := strconv.ParseUint(strings.TrimPrefix(fields[1], "0x"), 16, 64)
-		if startErr != nil || endErr != nil || end < start || (start == 0 && end == 0) {
+		flags, flagsErr := strconv.ParseUint(strings.TrimPrefix(fields[2], "0x"), 16, 64)
+		if startErr != nil || endErr != nil || flagsErr != nil || end < start || (start == 0 && end == 0) {
+			index++
 			continue
 		}
-		device.BARCount++
-		device.BARTotalBytes += end - start + 1
-		if start > uint64(^uint32(0)) || end > uint64(^uint32(0)) {
-			device.BARAbove4G = true
+		switch {
+		case index >= 0 && index < 6: // BARs 0..5
+			device.BARs = append(device.BARs, pciBarFromResource(index, start, end, flags))
+			device.BARCount++
+			device.BARTotalBytes += end - start + 1
+			if start > uint64(^uint32(0)) || end > uint64(^uint32(0)) {
+				device.BARAbove4G = true
+			}
+		case index == 6: // expansion ROM
+			device.ROM = true
+		case index >= 7: // bridge resource windows
+			device.ResourceWindows = append(device.ResourceWindows, fmt.Sprintf("%s-%s", fields[0], fields[1]))
 		}
+		index++
 	}
+}
+
+func pciBarFromResource(index int, start, end, flags uint64) model.PCIBar {
+	bar := model.PCIBar{Index: index, Start: start, End: end}
+	switch flags & 0x0f00 {
+	case ioresourceIO:
+		bar.Type = "io"
+	case ioresourceMem:
+		if flags&ioresourceMem64 != 0 {
+			bar.Type = "64-bit memory"
+		} else {
+			bar.Type = "memory"
+		}
+	default:
+		bar.Type = fmt.Sprintf("0x%x", flags&0x0f00)
+	}
+	bar.Prefetchable = flags&ioresourcePrefetch != 0
+	bar.ROM = flags&ioresourceReadonly != 0
+	return bar
 }
 
 func pciParentPath(path string) []string {

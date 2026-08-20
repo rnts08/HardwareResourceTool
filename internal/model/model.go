@@ -160,10 +160,22 @@ type PCIDevice struct {
 	BARTotalBytes           uint64   `json:"bar_total_bytes,omitempty"`
 	BARCount                int64    `json:"bar_count,omitempty"`
 	BARAbove4G              bool     `json:"bar_above_4g,omitempty"`
+	BARs                    []PCIBar `json:"bars,omitempty"`
+	ROM                     bool     `json:"rom,omitempty"`
+	ResourceWindows         []string `json:"resource_windows,omitempty"`
 	AERUncorrectableStatus  uint32   `json:"aer_uncorrectable_status,omitempty"`
 	AERCorrectableStatus    uint32   `json:"aer_correctable_status,omitempty"`
 	SRIOVTotalVFs           int64    `json:"sriov_total_vfs,omitempty"`
 	ResizableBAR            bool     `json:"resizable_bar,omitempty"`
+}
+
+type PCIBar struct {
+	Index        int    `json:"index"`
+	Start        uint64 `json:"start,omitempty"`
+	End          uint64 `json:"end,omitempty"`
+	Type         string `json:"type,omitempty"`
+	Prefetchable bool   `json:"prefetchable,omitempty"`
+	ROM          bool   `json:"rom,omitempty"`
 }
 
 type GPU struct {

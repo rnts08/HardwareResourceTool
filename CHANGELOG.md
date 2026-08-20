@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.0 — 2026-08-20
+
+- Parsed the PCI resource table into structured BAR entries: each BAR now
+  records its start/end range, type (memory, 64-bit memory, or I/O) and
+  prefetchable/ROM flags decoded from the `IORESOURCE_*` bits, expansion ROM
+  presence, and the bridge resource windows carried on the device's own
+  resource list. Exposed as `bars`, `rom`, and `resource_windows` in JSON and
+  shown in the TUI device detail pane and the text report.
+- Broadened PCIe/NUMA/isolation findings: the endpoint-to-upstream NUMA check
+  now scans the whole upstream path instead of only the parent bridge; an
+  IOMMU group whose functions sit on different NUMA nodes is flagged as a
+  cross-node DMA/interrupt-affinity hazard; a passthrough device pinned to a
+  NUMA node outside the VM's configured nodeset is flagged for locality
+  review; and an unbound physical endpoint in an IOMMU group is surfaced as a
+  potential passthrough or missing-driver candidate.
+
 ## 0.16.0 — 2026-08-20
 
 - Deepened per-NIC ethtool metadata using only read-only `ETHTOOL_G*` ioctls:

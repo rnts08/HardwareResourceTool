@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"hardware-resources-tool/internal/analyze"
@@ -98,7 +99,7 @@ func WriteText(w io.Writer, result model.Report) error {
 	}
 	for _, device := range result.Snapshot.PCI {
 		if len(device.Capabilities) > 0 || device.AERUncorrectableStatus != 0 || device.AERCorrectableStatus != 0 || device.PCIePathBottleneck != "" {
-			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, BARs %d/%d bytes, PF %s, VFs %v, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, device.BARTotalBytes, device.PCIePFAddress, device.PCIeVFAddresses, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
+			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, BARs %d/%d bytes%s, PF %s, VFs %v, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, device.BARTotalBytes, pciBARReportSuffix(device), device.PCIePFAddress, device.PCIeVFAddresses, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
 		}
 	}
 	for _, gpu := range result.Snapshot.GPUs {
@@ -143,4 +144,41 @@ func WriteText(w io.Writer, result model.Report) error {
 		fmt.Fprintf(w, "Collector errors: %d\n", len(result.Snapshot.Errors))
 	}
 	return nil
+}
+
+// pciBARReportSuffix summarizes the BAR composition for the text report: ROM
+// presence, prefetchable/64-bit/IO BAR counts, and bridge resource windows.
+func pciBARReportSuffix(device model.PCIDevice) string {
+	var parts []string
+	if device.ROM {
+		parts = append(parts, "rom")
+	}
+	prefetch, memory64, io := 0, 0, 0
+	for _, bar := range device.BARs {
+		if bar.Prefetchable {
+			prefetch++
+		}
+		switch bar.Type {
+		case "io":
+			io++
+		case "64-bit memory":
+			memory64++
+		}
+	}
+	if prefetch > 0 {
+		parts = append(parts, fmt.Sprintf("prefetch %d", prefetch))
+	}
+	if memory64 > 0 {
+		parts = append(parts, fmt.Sprintf("64-bit %d", memory64))
+	}
+	if io > 0 {
+		parts = append(parts, fmt.Sprintf("io %d", io))
+	}
+	if len(device.ResourceWindows) > 0 {
+		parts = append(parts, fmt.Sprintf("windows %d", len(device.ResourceWindows)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(parts, ", ") + ")"
 }

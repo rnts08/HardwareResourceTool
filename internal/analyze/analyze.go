@@ -2,7 +2,9 @@ package analyze
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 
 	"hardware-resources-tool/internal/model"
 )
@@ -81,14 +83,52 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 		}
 	}
 	for _, device := range s.PCI {
-		if device.PCIeParentAddress == "" || device.NUMANode < 0 {
+		if device.NUMANode < 0 || len(device.PCIePath) < 2 {
 			continue
 		}
-		for _, parent := range s.PCI {
-			if parent.Address == device.PCIeParentAddress && parent.NUMANode >= 0 && parent.NUMANode != device.NUMANode {
-				findings = append(findings, model.Finding{Severity: "info", Category: "pcie", Title: "PCIe endpoint and upstream bridge use different NUMA nodes", Evidence: fmt.Sprintf("%s is NUMA %d; parent bridge %s is NUMA %d", device.Address, device.NUMANode, parent.Address, parent.NUMANode), Recommendation: "Validate workload placement and interrupt/CPU affinity when latency or PCIe traffic locality matters."})
+	ancestorLoop:
+		for _, ancestor := range device.PCIePath[1:] {
+			for _, candidate := range s.PCI {
+				if candidate.Address != ancestor || candidate.NUMANode < 0 || candidate.NUMANode == device.NUMANode {
+					continue
+				}
+				findings = append(findings, model.Finding{Severity: "info", Category: "pcie", Title: "PCIe path crosses a NUMA boundary", Evidence: fmt.Sprintf("%s is NUMA %d; upstream %s is NUMA %d", device.Address, device.NUMANode, ancestor, candidate.NUMANode), Recommendation: "Validate workload placement and interrupt/CPU affinity when latency or PCIe traffic locality matters; traffic to this device crosses a node boundary upstream."})
+				break ancestorLoop
 			}
 		}
+	}
+	groupNodes := map[string]map[int]bool{}
+	for _, device := range s.PCI {
+		if device.IOMMUGroup == "" || device.NUMANode < 0 {
+			continue
+		}
+		if groupNodes[device.IOMMUGroup] == nil {
+			groupNodes[device.IOMMUGroup] = map[int]bool{}
+		}
+		groupNodes[device.IOMMUGroup][int(device.NUMANode)] = true
+	}
+	for group, nodes := range groupNodes {
+		if len(nodes) < 2 {
+			continue
+		}
+		sorted := make([]int, 0, len(nodes))
+		for node := range nodes {
+			sorted = append(sorted, node)
+		}
+		sort.Ints(sorted)
+		findings = append(findings, model.Finding{Severity: "warning", Category: "pcie", Title: "IOMMU group spans NUMA nodes", Evidence: fmt.Sprintf("group %s contains devices on NUMA nodes %v", group, sorted), Recommendation: "Assign the entire IOMMU group to one NUMA node or review the BIOS/ACPI topology; a split group forces cross-node DMA and interrupt affinity and can slow passthrough I/O."})
+	}
+	for _, device := range s.PCI {
+		if device.Driver != "" || device.IOMMUGroup == "" || device.Class == "" {
+			continue
+		}
+		if strings.HasPrefix(device.Class, "0x06") {
+			continue
+		}
+		if len(device.PCIeVFAddresses) > 0 || device.PCIePFAddress != "" {
+			continue
+		}
+		findings = append(findings, model.Finding{Severity: "info", Category: "pcie", Title: "PCIe endpoint has no bound driver", Evidence: fmt.Sprintf("%s (%s) is unbound but present in IOMMU group %s", device.Address, device.Class, device.IOMMUGroup), Recommendation: "Verify whether the device is intentionally unbound for passthrough or missing a required driver before treating it as unusable."})
 	}
 	if s.Virtualization.QEMUDetected {
 		if s.Virtualization.VCPUOvercommitRatio > 1 {
@@ -126,6 +166,30 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			}
 			if vm.CgroupAvailable && vm.MemoryMaxBytes > 0 && float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes) > 0.9 {
 				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "VM cgroup memory is near its limit", Evidence: fmt.Sprintf("%s uses %.1f%% of its cgroup memory limit", vm.Name, float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes)*100), Recommendation: "Review guest memory pressure, ballooning, host reclaim, and the domain memory limit before adding workload or increasing overcommit."})
+			}
+			if len(vm.NUMANodes) > 0 && len(vm.PCIAddresses) > 0 {
+				for _, address := range vm.PCIAddresses {
+					var device *model.PCIDevice
+					for i := range s.PCI {
+						if s.PCI[i].Address == address {
+							device = &s.PCI[i]
+							break
+						}
+					}
+					if device == nil || device.NUMANode < 0 {
+						continue
+					}
+					onConfiguredNode := false
+					for _, node := range vm.NUMANodes {
+						if node == int(device.NUMANode) {
+							onConfiguredNode = true
+							break
+						}
+					}
+					if !onConfiguredNode {
+						findings = append(findings, model.Finding{Severity: "info", Category: "numa", Title: "Passthrough device is on a different NUMA node than the VM", Evidence: fmt.Sprintf("%s passes through %s on NUMA %d but pins memory to nodes %v", vm.Name, address, device.NUMANode, vm.NUMANodes), Recommendation: "Consider matching the device NUMA node and the VM nodeset for DMA and interrupt locality, or verify the guest has enough remote-bandwidth for its workload."})
+					}
+				}
 			}
 			if vm.QMPStatus == "paused" {
 				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "QEMU domain is paused", Evidence: vm.Name + " reports paused through read-only QMP status", Recommendation: "Inspect the domain and host logs to determine whether the pause is intentional or caused by an I/O, memory, or device condition."})

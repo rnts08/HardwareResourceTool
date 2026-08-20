@@ -54,3 +54,62 @@ func TestVirtualizationUsageFindings(t *testing.T) {
 		t.Fatalf("unexpected virtualization findings: %#v", findings)
 	}
 }
+
+func TestPCICrossNUMAPathFinding(t *testing.T) {
+	snapshot := model.Snapshot{PCI: []model.PCIDevice{
+		{Address: "0000:01:00.0", NUMANode: 0, PCIePath: []string{"0000:01:00.0", "0000:00:01.0", "0000:00:00.0"}},
+		{Address: "0000:00:01.0", NUMANode: 1},
+		{Address: "0000:00:00.0", NUMANode: 1},
+	}}
+	findings := Findings(snapshot)
+	matched := 0
+	for _, finding := range findings {
+		if finding.Title == "PCIe path crosses a NUMA boundary" {
+			matched++
+		}
+	}
+	if matched != 1 {
+		t.Fatalf("expected one cross-NUMA path finding, got %d: %#v", matched, findings)
+	}
+}
+
+func TestIOMMUGroupSpansNUMANodesFinding(t *testing.T) {
+	snapshot := model.Snapshot{PCI: []model.PCIDevice{
+		{Address: "0000:01:00.0", IOMMUGroup: "10", NUMANode: 0},
+		{Address: "0000:01:00.1", IOMMUGroup: "10", NUMANode: 1},
+	}}
+	findings := Findings(snapshot)
+	matched := 0
+	for _, finding := range findings {
+		if finding.Title == "IOMMU group spans NUMA nodes" {
+			if finding.Severity != "warning" {
+				t.Fatalf("expected warning severity, got %q", finding.Severity)
+			}
+			matched++
+		}
+	}
+	if matched != 1 {
+		t.Fatalf("expected IOMMU group spans-NUMA finding, got %#v", findings)
+	}
+}
+
+func TestPassthroughNUMAMismatchFinding(t *testing.T) {
+	snapshot := model.Snapshot{
+		PCI: []model.PCIDevice{{Address: "0000:65:00.0", NUMANode: 1}},
+		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
+			{Name: "gpu-vm", NUMANodes: []int{0}, PCIAddresses: []string{"0000:65:00.0"}},
+		}},
+	}
+	findings := Findings(snapshot)
+	if len(findings) != 1 || findings[0].Title != "Passthrough device is on a different NUMA node than the VM" {
+		t.Fatalf("unexpected passthrough NUMA findings: %#v", findings)
+	}
+}
+
+func TestUnboundEndpointFinding(t *testing.T) {
+	snapshot := model.Snapshot{PCI: []model.PCIDevice{{Address: "0000:02:00.0", Class: "0x030000", IOMMUGroup: "5"}}}
+	findings := Findings(snapshot)
+	if len(findings) != 1 || findings[0].Title != "PCIe endpoint has no bound driver" {
+		t.Fatalf("unexpected unbound-endpoint findings: %#v", findings)
+	}
+}

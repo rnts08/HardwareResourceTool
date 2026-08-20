@@ -273,13 +273,18 @@ Note: `mdlayher/ethtool` (v0.4.1 and v0.6.1) exposes no Features/Coalesce/RSS
 families, so these were implemented as read-only `ETHTOOL_G*` ioctls
 (`GDRVINFO`, `GSET`, `GSSET_INFO`/`GSTRINGS`/`GFEATURES`, `GCOALESCE`, `GRSSH`).
 
-### 0.17.0 — PCIe follow-up
+### 0.17.0 — PCIe follow-up ✅ shipped in 0.17.0
 
 - Deeper BAR/resource semantics (resource windows, ROM, prefetch) and broader
   NUMA/isolation findings beyond the current downgraded-link and path checks.
 
 Acceptance: findings distinguish BAR/resource limits from link limits and cover
 cross-NUMA and isolation hazards with conservative evidence.
+
+Note: BAR type/prefetch/ROM come from the `IORESOURCE_*` flags of the
+`/sys/bus/pci/devices/<addr>/resource` table; findings added for cross-NUMA
+IOMMU groups, whole-path NUMA boundaries, passthrough-device NUMA mismatch,
+and unbound endpoints in IOMMU groups.
 
 ### 0.18.0 — GPU enrichment
 

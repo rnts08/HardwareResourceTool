@@ -233,14 +233,16 @@ Findings have critical, warning, or info severity and include category, title,
 evidence, and recommendation. They are advisories, not proof of causation.
 Current findings cover CPU pressure and iowait, memory exhaustion and swap,
 filesystem capacity, NIC errors/drops, PCIe negotiation/path/AER issues,
-IOMMU-group sharing, PCI/bridge NUMA mismatch, VM CPU/memory overcommit,
-cgroup pressure, paused QEMU domains, invalid VM NUMA nodesets, THP and
-selected sysctl observations, and collection errors.
+IOMMU-group sharing and cross-NUMA groups, whole-path PCI/bridge NUMA
+mismatch, unbound endpoints, passthrough-device NUMA mismatch, VM CPU/memory
+overcommit, cgroup pressure, paused QEMU domains, invalid VM NUMA nodesets,
+THP and selected sysctl observations, and collection errors.
 
 ### Hardware
 
 PCI rows show address, vendor/device IDs, class, driver, NUMA node, current and
-maximum link speed/width, path minimum and bottleneck, BAR count/size, and
+maximum link speed/width, path minimum and bottleneck, BAR count/size plus
+composition (memory/64-bit/I-O, prefetchable, ROM), resource windows, and
 capabilities. The path is the resolved upstream PCIe chain where sysfs makes
 it available.
 
@@ -369,8 +371,9 @@ pci_devices entries include address, vendor/device/class, driver, numa_node,
 iommu_group, current/max link speed/width, decoded capabilities, PCIe
 payload/read-request limits, endpoint capability and negotiated values,
 resolved pcie_path, minimum path link and bandwidth, bottleneck and parent
-addresses, PF/VF relationships, BAR totals/count/above-4G, AER statuses,
-SR-IOV total VFs, and Resizable BAR presence.
+addresses, PF/VF relationships, BAR totals/count/above-4G and structured bars
+(index, start/end, memory/64-bit/I-O type, prefetchable, ROM), rom presence,
+resource_windows, AER statuses, SR-IOV total VFs, and Resizable BAR presence.
 
 gpus entries include PCI identity plus name, uuid, framebuffer total/used,
 process-accounted framebuffer bytes and memory_source, utilization, temperature, power, ECC enabled/corrected/uncorrected counts,

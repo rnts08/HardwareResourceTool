@@ -33,6 +33,18 @@ type modelState struct {
 	paused      bool
 	showHelp    bool
 	collectTime time.Duration
+	pickerMode  bool
+	detailMode  bool
+	pickerItems []pickerItem
+	pickerSel   int
+	detailTitle string
+	detailLines []string
+}
+
+type pickerItem struct {
+	kind  string
+	index int
+	label string
 }
 
 var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware", "Thermal", "Top"}
@@ -68,13 +80,67 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "esc":
+			if m.detailMode {
+				m.detailMode = false
+			} else if m.pickerMode {
+				m.pickerMode = false
+			}
+			return m, nil
+		case "enter":
+			if m.pickerMode {
+				m.openDetail()
+			}
+			return m, nil
 		case "1", "2", "3", "4", "5", "6", "7":
+			if m.pickerMode || m.detailMode {
+				return m, nil
+			}
 			m.tab = int(msg.String()[0] - '1')
 			m.offset, m.xoffset = 0, 0
+		case "d":
+			if m.tab == 4 && !m.pickerMode && !m.detailMode {
+				m.pickerMode = true
+				m.pickerItems = buildPicker(m.snapshot)
+				m.pickerSel = 0
+				m.offset, m.xoffset = 0, 0
+			}
+		case "j", "down":
+			if m.pickerMode {
+				if m.pickerSel+1 < len(m.pickerItems) {
+					m.pickerSel++
+				}
+				return m, nil
+			}
+			m.offset += pageStep(m.height, msg.String())
+		case "k", "up":
+			if m.pickerMode {
+				if m.pickerSel > 0 {
+					m.pickerSel--
+				}
+				return m, nil
+			}
+			m.offset -= pageStep(m.height, msg.String())
+			if m.offset < 0 {
+				m.offset = 0
+			}
+		case "pgdown", "ctrl+d", "ctrl+f":
+			m.offset += pageStep(m.height, msg.String())
+		case "pgup", "ctrl+u", "ctrl+b":
+			m.offset -= pageStep(m.height, msg.String())
+			if m.offset < 0 {
+				m.offset = 0
+			}
 		case "tab", "right", "l":
+			if m.pickerMode || m.detailMode {
+				return m, nil
+			}
 			m.tab = (m.tab + 1) % len(tabs)
 			m.offset, m.xoffset = 0, 0
 		case "shift+tab", "left", "h":
+			if m.pickerMode || m.detailMode {
+				return m, nil
+			}
 			m.tab = (m.tab + len(tabs) - 1) % len(tabs)
 			m.offset, m.xoffset = 0, 0
 		case "?":
@@ -84,13 +150,6 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.collecting = false
 			if !m.paused {
 				return m, tea.Batch(collectNow(m.collector), tick(m.interval))
-			}
-		case "j", "down", "pgdown", "ctrl+d", "ctrl+f":
-			m.offset += pageStep(m.height, msg.String())
-		case "k", "up", "pgup", "ctrl+u", "ctrl+b":
-			m.offset -= pageStep(m.height, msg.String())
-			if m.offset < 0 {
-				m.offset = 0
 			}
 		case "shift+right", ">":
 			m.xoffset += 8
@@ -116,11 +175,24 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.MouseWheelDown:
 			m.offset += 3
+		case tea.MouseLeft:
+			if !m.showHelp && !m.pickerMode && !m.detailMode && msg.Y == 2 {
+				if tab := m.tabAtX(msg.X); tab >= 0 {
+					m.tab = tab
+					m.offset, m.xoffset = 0, 0
+				}
+			}
 		}
 	case model.Snapshot:
 		m.collecting = false
 		m.snapshot, m.findings, m.err = msg, analyze.FindingsWithThresholds(msg, m.thresholds), nil
 		m.collectTime = time.Duration(msg.CollectDurationMS) * time.Millisecond
+		if m.pickerMode {
+			m.pickerItems = buildPicker(msg)
+			if m.pickerSel >= len(m.pickerItems) {
+				m.pickerSel = 0
+			}
+		}
 		m.history = append(m.history, msg)
 		if len(m.history) > historyLimit {
 			m.history = m.history[len(m.history)-historyLimit:]
@@ -192,6 +264,12 @@ func (m modelState) View() string {
 	header.WriteString("\n" + status + "\n\n")
 
 	content := m.tabContent()
+	if m.pickerMode {
+		content = m.pickerContent()
+	}
+	if m.detailMode {
+		content = m.detailTitle + "\n" + strings.Join(m.detailLines, "\n") + "\n"
+	}
 
 	var footer strings.Builder
 	if m.err != nil {
@@ -204,9 +282,226 @@ func (m modelState) View() string {
 		}
 		footer.WriteString("Collector errors: " + errors + "\n")
 	}
-	footer.WriteString("1-7: tabs  h/l prev/next  j/k scroll  </> horizontal  space pause  ? help  q quit")
+	if m.detailMode {
+		footer.WriteString("esc: back to picker  j/k scroll")
+	} else if m.pickerMode {
+		footer.WriteString("j/k select  enter open  esc close  d on Hardware opens this picker")
+	} else {
+		footer.WriteString("1-7: tabs  h/l prev/next  j/k scroll  </> horizontal  d detail  space pause  ? help  q quit")
+	}
 
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
+}
+
+func (m modelState) openDetail() {
+	if m.pickerSel < 0 || m.pickerSel >= len(m.pickerItems) {
+		return
+	}
+	item := m.pickerItems[m.pickerSel]
+	title, lines := detailFor(m.snapshot, item)
+	if len(lines) == 0 {
+		return
+	}
+	m.detailTitle, m.detailLines = title, lines
+	m.detailMode = true
+	m.offset, m.xoffset = 0, 0
+}
+
+func (m modelState) pickerContent() string {
+	var b strings.Builder
+	b.WriteString("Select an item to expand (esc to close)\n")
+	if len(m.pickerItems) == 0 {
+		b.WriteString("\n  No devices or VMs reported in this capture.\n")
+		return b.String()
+	}
+	for i, item := range m.pickerItems {
+		cursor := " "
+		if i == m.pickerSel {
+			cursor = ">"
+		}
+		fmt.Fprintf(&b, "  %s %s\n", cursor, item.label)
+	}
+	return b.String()
+}
+
+func buildPicker(snapshot model.Snapshot) []pickerItem {
+	items := []pickerItem{}
+	for i, vm := range snapshot.Virtualization.VirtualMachines {
+		vmid := ""
+		if vm.VMID != "" {
+			vmid = " vmid " + vm.VMID
+		}
+		items = append(items, pickerItem{kind: "vm", index: i, label: fmt.Sprintf("VM    %-20s%s pid %d running=%t source=%s", vm.Name, vmid, vm.PID, vm.Running, vm.Source)})
+	}
+	for i, gpu := range snapshot.GPUs {
+		items = append(items, pickerItem{kind: "gpu", index: i, label: fmt.Sprintf("GPU   %-12s %-24s nvml=%s", gpu.Address, gpu.Name, gpu.NVMLStatus)})
+	}
+	for i, device := range snapshot.PCI {
+		items = append(items, pickerItem{kind: "pci", index: i, label: fmt.Sprintf("PCI   %-12s %-14s %s:%s", device.Address, device.Class, device.VendorID, device.DeviceID)})
+	}
+	for i, memory := range snapshot.MemoryDevices {
+		items = append(items, pickerItem{kind: "memory", index: i, label: fmt.Sprintf("DIMM  %-16s %6.1f GiB %s", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type)})
+	}
+	return items
+}
+
+func (m modelState) tabAtX(x int) int {
+	column := 0
+	for i, tab := range tabs {
+		var token string
+		if i == m.tab {
+			token = fmt.Sprintf("[%d %s] ", i+1, tab)
+		} else {
+			token = fmt.Sprintf(" %d %s  ", i+1, tab)
+		}
+		if x >= column && x < column+len(token) {
+			return i
+		}
+		column += len(token)
+	}
+	return -1
+}
+
+func detailFor(snapshot model.Snapshot, item pickerItem) (string, []string) {
+	switch item.kind {
+	case "vm":
+		return vmDetail(snapshot.Virtualization.VirtualMachines[item.index])
+	case "gpu":
+		return gpuDetail(snapshot.GPUs[item.index])
+	case "pci":
+		return pciDetail(snapshot.PCI[item.index])
+	case "memory":
+		device := snapshot.MemoryDevices[item.index]
+		lines := []string{
+			fmt.Sprintf("  locator          %s", device.Locator),
+			fmt.Sprintf("  manufacturer     %s", device.Manufacturer),
+			fmt.Sprintf("  part number      %s", device.PartNumber),
+			fmt.Sprintf("  serial           %s", device.Serial),
+			fmt.Sprintf("  type             %s", device.Type),
+			fmt.Sprintf("  size             %s", formatBytes(device.SizeBytes)),
+			fmt.Sprintf("  speed            %d MT/s", device.SpeedMTs),
+			fmt.Sprintf("  configured speed %d MT/s", device.ConfiguredSpeedMTs),
+			fmt.Sprintf("  corrected errors %d", device.CorrectedErrors),
+			fmt.Sprintf("  uncorrected errs %d", device.UncorrectedErrors),
+		}
+		return "DIMM " + device.Locator, lines
+	}
+	return "", nil
+}
+
+func vmDetail(vm model.VirtualMachine) (string, []string) {
+	runtime := make([]string, 0, len(vm.RuntimeNUMABytes))
+	for node, bytes := range vm.RuntimeNUMABytes {
+		runtime = append(runtime, fmt.Sprintf("node%d:%s", node, formatBytes(bytes)))
+	}
+	numaResidency := "unavailable"
+	if vm.RuntimeAvailable {
+		numaResidency = "none"
+		if len(runtime) > 0 {
+			numaResidency = strings.Join(runtime, " ")
+		}
+	}
+	lines := []string{
+		fmt.Sprintf("  name             %s", vm.Name),
+		fmt.Sprintf("  vmid             %s", vm.VMID),
+		fmt.Sprintf("  source           %s", vm.Source),
+		fmt.Sprintf("  pid              %d", vm.PID),
+		fmt.Sprintf("  running          %t", vm.Running),
+		fmt.Sprintf("  configured vCPUs %d", vm.ConfiguredVCPUs),
+		fmt.Sprintf("  QMP enabled vCPU %d", vm.QMPEnabledVCPUs),
+		fmt.Sprintf("  configured memory %s", formatBytes(vm.ConfiguredMemoryBytes)),
+		fmt.Sprintf("  process CPU      %.1f%%  cgroup CPU %.1f%%", vm.CPUPercent, vm.CgroupCPUPercent),
+		fmt.Sprintf("  process RSS      %s", formatBytes(vm.ProcessRSSBytes)),
+		fmt.Sprintf("  cgroup current   %s  max %s", formatBytes(vm.MemoryCurrentBytes), formatBytes(vm.MemoryMaxBytes)),
+		fmt.Sprintf("  cgroup path      %s", vm.CgroupPath),
+		fmt.Sprintf("  read/write       %s / %s", formatBytes(vm.ReadBytes), formatBytes(vm.WriteBytes)),
+		fmt.Sprintf("  hugepages        %t  page %s", vm.Hugepages, formatBytes(vm.HugepageBytes)),
+		fmt.Sprintf("  runtime huge     anon %s hugetlb %s", formatBytes(vm.RuntimeAnonHugeBytes), formatBytes(vm.RuntimeHugetlbBytes)),
+		fmt.Sprintf("  NUMA residency   %s", numaResidency),
+		fmt.Sprintf("  NUMA nodes       %v", vm.NUMANodes),
+	}
+	qmpStatus := "unavailable"
+	if vm.QMPAvailable {
+		qmpStatus = vm.QMPStatus
+	}
+	if vm.QMPError != "" {
+		qmpStatus = vm.QMPError
+	}
+	lines = append(lines,
+		fmt.Sprintf("  QMP              %s  version %s", qmpStatus, vm.QMPVersion),
+		fmt.Sprintf("  QMP base/plugged %s / %s", formatBytes(vm.QMPBaseMemoryBytes), formatBytes(vm.QMPPluggedMemoryBytes)),
+		fmt.Sprintf("  balloon          enabled=%t reported=%t guest=%t", vm.BalloonEnabled, vm.BalloonReported, vm.BalloonGuestReport),
+		fmt.Sprintf("  balloon actual   %s  target %s  reclaimed %s", formatBytes(vm.BalloonActualBytes), formatBytes(vm.BalloonTargetBytes), formatBytes(vm.BalloonReclaimedBytes)),
+		fmt.Sprintf("  balloon commit   %s  available %s", formatBytes(vm.BalloonCommittedBytes), formatBytes(vm.BalloonAvailableBytes)),
+	)
+	lines = append(lines, "  disks")
+	for _, disk := range vm.Disks {
+		lines = append(lines, fmt.Sprintf("    %-4s %-6s %s", disk.Bus, disk.Target, disk.Source))
+	}
+	if len(vm.Disks) == 0 {
+		lines = append(lines, "    none reported")
+	}
+	lines = append(lines, "  NICs")
+	for _, nic := range vm.NICs {
+		host := nic.HostNetwork
+		if host == "" {
+			host = "unresolved"
+		}
+		lines = append(lines, fmt.Sprintf("    %-8s source %-12s host %-10s rx %s/s tx %s/s mac %s", nic.Type, nic.Source, host, formatRate(nic.RXBytesPerSecond), formatRate(nic.TXBytesPerSecond), nic.MAC))
+	}
+	if len(vm.NICs) == 0 {
+		lines = append(lines, "    none reported")
+	}
+	lines = append(lines, "  PCI attachments", fmt.Sprintf("    %v", vm.PCIAddresses))
+	return "VM " + vm.Name, lines
+}
+
+func gpuDetail(gpu model.GPU) (string, []string) {
+	lines := []string{
+		fmt.Sprintf("  address          %s", gpu.Address),
+		fmt.Sprintf("  ids              %s:%s", gpu.VendorID, gpu.DeviceID),
+		fmt.Sprintf("  name             %s", gpu.Name),
+		fmt.Sprintf("  NVML             %t  status %s", gpu.NVML, gpu.NVMLStatus),
+		fmt.Sprintf("  uuid             %s", gpu.UUID),
+		fmt.Sprintf("  memory           used %s / total %s", formatBytes(gpu.MemoryUsedBytes), formatBytes(gpu.MemoryBytes)),
+		fmt.Sprintf("  process memory   %s (%s)", formatBytes(gpu.MemoryProcessBytes), gpu.MemorySource),
+		fmt.Sprintf("  utilization      %.1f%%", gpu.UtilizationPercent),
+		fmt.Sprintf("  temperature      %.1f C", gpu.TemperatureCelsius),
+		fmt.Sprintf("  power            %.1f W", gpu.PowerWatts),
+		fmt.Sprintf("  ECC              enabled=%t corrected=%d uncorrected=%d", gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected),
+		fmt.Sprintf("  MIG              enabled=%t max instances=%d", gpu.MIGEnabled, gpu.MIGMaxInstances),
+	}
+	if gpu.PassedThrough {
+		lines = append(lines, fmt.Sprintf("  passthrough      %s", gpu.PassedThroughVM))
+	}
+	return "GPU " + gpu.Name + " " + gpu.Address, lines
+}
+
+func pciDetail(device model.PCIDevice) (string, []string) {
+	lines := []string{
+		fmt.Sprintf("  address          %s", device.Address),
+		fmt.Sprintf("  ids              %s:%s", device.VendorID, device.DeviceID),
+		fmt.Sprintf("  class            %s", device.Class),
+		fmt.Sprintf("  driver           %s", device.Driver),
+		fmt.Sprintf("  NUMA node        %d", device.NUMANode),
+		fmt.Sprintf("  IOMMU group      %s", device.IOMMUGroup),
+		fmt.Sprintf("  link             negotiated %s x%d  max %s x%d", device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth),
+		fmt.Sprintf("  PCIe capability  %s x%d  max payload %d  max read req %d", device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes),
+		fmt.Sprintf("  negotiated       %s x%d", device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth),
+		fmt.Sprintf("  path bandwidth   %s  bottleneck %s", formatGbps(device.PCIePathBandwidthGbps), device.PCIePathBottleneck),
+		fmt.Sprintf("  parent           %s  PF %s", device.PCIeParentAddress, device.PCIePFAddress),
+		fmt.Sprintf("  VFs              %v", device.PCIeVFAddresses),
+		fmt.Sprintf("  BAR total        %s (%d) above4g=%t", formatBytes(device.BARTotalBytes), device.BARCount, device.BARAbove4G),
+		fmt.Sprintf("  AER              uncorrectable %d  correctable %d", device.AERUncorrectableStatus, device.AERCorrectableStatus),
+		fmt.Sprintf("  SR-IOV total VFs %d  resizable BAR %t", device.SRIOVTotalVFs, device.ResizableBAR),
+	}
+	if len(device.Capabilities) > 0 {
+		lines = append(lines, fmt.Sprintf("  capabilities     %v", device.Capabilities))
+	}
+	if len(device.PCIePath) > 0 {
+		lines = append(lines, fmt.Sprintf("  path             %v", device.PCIePath))
+	}
+	return "PCI " + device.Address, lines
 }
 
 func (m modelState) tabContent() string {
@@ -351,6 +646,9 @@ func renderHelp(thresholds analyze.Thresholds) string {
 		"  1-7 or h/l/tab     switch tabs (Overview, Storage, Network, Findings, Hardware, Thermal, Top)",
 		"  j/k, PgUp/PgDn     scroll the active tab vertically",
 		"  </>, shift+arrows  scroll the active tab horizontally",
+		"  d                  on Hardware: pick a VM/GPU/PCI/DIMM to expand",
+		"  enter              open the selected item's detail pane",
+		"  esc                close the detail pane or the picker",
 		"  space              pause/resume live collection",
 		"  r                  force a refresh now",
 		"  ?                  toggle this help",
@@ -555,7 +853,11 @@ func viewTop(snapshot model.Snapshot) string {
 		return b.String()
 	}
 	for _, process := range snapshot.TopProcesses {
-		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %s\n", process.Name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), process.State)
+		qemu := ""
+		if isQEMUSample(process, snapshot.Virtualization.VirtualMachines) {
+			qemu = "  [QEMU]"
+		}
+		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %s%s\n", process.Name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), process.State, qemu)
 		if process.CPUPercent >= 90 {
 			line = markWarning + line
 		}
@@ -563,6 +865,18 @@ func viewTop(snapshot model.Snapshot) string {
 	}
 	b.WriteString("\n  CPU percent is the rate between the last two samples.\n")
 	return b.String()
+}
+
+func isQEMUSample(process model.ProcessSample, vms []model.VirtualMachine) bool {
+	if strings.HasPrefix(process.Name, "qemu-system-") || process.Name == "qemu-kvm" {
+		return true
+	}
+	for _, vm := range vms {
+		if vm.PID == process.PID {
+			return true
+		}
+	}
+	return false
 }
 
 func historyValues(history []model.Snapshot, value func(model.Snapshot) float64) []float64 {
@@ -608,6 +922,13 @@ func formatRate(bytesPerSecond float64) string {
 
 func formatBytes(bytes uint64) string {
 	return formatRate(float64(bytes))
+}
+
+func formatGbps(gbps float64) string {
+	if gbps <= 0 {
+		return "unknown"
+	}
+	return fmt.Sprintf("%.1f Gb/s", gbps)
 }
 
 func updatedAt(snapshot model.Snapshot) string {

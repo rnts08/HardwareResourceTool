@@ -5,7 +5,7 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.12.0` (`v0.12.0`). It is focused on Linux hosts,
+The current release is `0.13.0` (`v0.13.0`). It is focused on Linux hosts,
 especially KVM/QEMU and Proxmox-style virtualization servers. It does not
 change kernel settings, device settings, guest settings, storage, networking,
 or QEMU state.
@@ -113,7 +113,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.12.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.13.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -179,6 +179,11 @@ for its CPU-idle and memory-used sparklines. Use:
 - `Shift+Tab`, Left arrow, or `h` for the previous view.
 - `j`/`k` and Page Up/Down to scroll the active view vertically.
 - `<`/`>` or Shift+arrows to scroll the active view horizontally.
+- `d` on the Hardware tab to open a picker of VMs, GPUs, PCI devices, and
+  DIMMs; `j`/`k` select, Enter expands a field-by-field detail pane, and Esc
+  closes it.
+- Mouse wheel scrolls the active view; clicking a tab header row switches
+  views.
 - `Space` to pause and resume live collection.
 - `r` to force a refresh before the next interval.
 - `?` for help.
@@ -187,7 +192,7 @@ for its CPU-idle and memory-used sparklines. Use:
 The Overview reports kernel/system event counts as deltas since the previous
 sample rather than cumulative totals. The Top processes view lists the ten
 highest-CPU host processes with per-second CPU rate, resident set size, and
-state.
+state, and flags QEMU/KVM host processes with a `[QEMU]` marker.
 
 Findings are color-coded by severity (critical, warning, info) and collection
 is gated so a slow snapshot cannot overlap the next one. The TUI accepts the

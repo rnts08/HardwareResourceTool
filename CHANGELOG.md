@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0 — 2026-08-20
+
+- Added a detail pane for devices and VMs. Press `d` on the Hardware tab to
+  open a picker of every VM, GPU, PCI device, and DIMM; `j`/`k` select an
+  entry and Enter expands it into a full field-by-field breakdown (balloon
+  and QMP state, disks, NICs with host correlation and rates, NUMA residency,
+  PCI links/BARs/AER, NVML and MIG state, DIMM speed and ECC counters).
+  Esc closes the pane or picker.
+- Added mouse tab clicks: clicking a tab header row switches views, alongside
+  the existing mouse-wheel scrolling.
+- The Top processes view now flags which entries are QEMU/KVM processes
+  (`[QEMU]`), so the hot guest host-process is visible at a glance.
+
 ## 0.12.0 — 2026-08-20
 
 - Added a heavy-telemetry throttle so the per-snapshot cost of QMP queries,

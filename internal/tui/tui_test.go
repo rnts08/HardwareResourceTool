@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -61,6 +62,80 @@ func TestViewTopShowsProcesses(t *testing.T) {
 func TestViewTopEmptyState(t *testing.T) {
 	if !contains(viewTop(model.Snapshot{}), "No process samples available.") {
 		t.Fatal("empty top view missing hint")
+	}
+}
+
+func TestViewTopMarksQEMUProcesses(t *testing.T) {
+	snapshot := model.Snapshot{
+		TopProcesses: []model.ProcessSample{
+			{PID: 42, Name: "qemu-system-x86_64", CPUPercent: 10},
+			{PID: 99, Name: "worker", CPUPercent: 5},
+			{PID: 1234, Name: "qemu", CPUPercent: 3},
+		},
+		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "guest-a", PID: 1234}}},
+	}
+	view := viewTop(snapshot)
+	if count := strings.Count(view, "[QEMU]"); count != 2 {
+		t.Fatalf("expected 2 QEMU markers, got %d: %s", count, view)
+	}
+	if !contains(view, "qemu-system-x86_64       pid      42") {
+		t.Fatalf("qemu-system missing from view: %s", view)
+	}
+}
+
+func TestPickerBuildsItemsForDevicesAndVMs(t *testing.T) {
+	snapshot := model.Snapshot{
+		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "vm-100", VMID: "100", PID: 1234, Running: true, Source: "proxmox"}}},
+		GPUs:           []model.GPU{{Address: "0000:65:00.0", Name: "Tesla T4", NVMLStatus: "ok"}},
+		PCI:            []model.PCIDevice{{Address: "0000:00:03.0", Class: "Ethernet", VendorID: "8086", DeviceID: "10fb"}},
+		MemoryDevices:  []model.MemoryDevice{{Locator: "DIMM_A1", SizeBytes: 32 << 30, Type: "DDR4"}},
+	}
+	items := buildPicker(snapshot)
+	if len(items) != 4 {
+		t.Fatalf("expected 4 picker items, got %d: %#v", len(items), items)
+	}
+	if items[0].kind != "vm" || items[1].kind != "gpu" || items[2].kind != "pci" || items[3].kind != "memory" {
+		t.Fatalf("unexpected picker order: %#v", items)
+	}
+}
+
+func TestDetailForVMShowsBreakdown(t *testing.T) {
+	vm := model.VirtualMachine{
+		Name: "vm-100", VMID: "100", PID: 1234, Running: true, Source: "proxmox",
+		ConfiguredVCPUs: 4, QMPEnabledVCPUs: 4, ConfiguredMemoryBytes: 8 << 30,
+		CPUPercent: 25, MemoryCurrentBytes: 4 << 30, ProcessRSSBytes: 2 << 30,
+		BalloonEnabled: true, BalloonActualBytes: 3 << 30, QMPAvailable: true, QMPStatus: "running",
+		RuntimeAvailable: true, RuntimeNUMABytes: map[int]uint64{0: 1 << 30, 1: 2 << 30},
+		Disks:        []model.VirtualDisk{{Target: "vda", Bus: "virtio", Source: "/var/lib/vz/images/100/disk.qcow2"}},
+		NICs:         []model.VirtualNIC{{Type: "virtio", Source: "vmbr0", HostNetwork: "enp3s0", MAC: "52:54:00:00:00:01"}},
+		PCIAddresses: []string{"0000:65:00.0"},
+	}
+	title, lines := vmDetail(vm)
+	if title != "VM vm-100" {
+		t.Fatalf("unexpected title: %q", title)
+	}
+	joined := strings.Join(lines, "\n")
+	for _, expected := range []string{"balloon", "node0:1.0 GiB", "node1:2.0 GiB", "/var/lib/vz/images/100/disk.qcow2", "enp3s0", "0000:65:00.0", "QMP"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("detail missing %q: %s", expected, joined)
+		}
+	}
+}
+
+func TestTabAtXMapsTabs(t *testing.T) {
+	m := modelState{tab: 3}
+	columns := 0
+	for i := range tabs {
+		if tab := m.tabAtX(columns); tab != i {
+			t.Fatalf("expected tab %d at column %d, got %d", i, columns, tab)
+		}
+		if tab := m.tabAtX(columns + 1); tab != i {
+			t.Fatalf("expected tab %d at column %d, got %d", i, columns+1, tab)
+		}
+		columns += len(fmt.Sprintf(" %d %s  ", i+1, tabs[i]))
+	}
+	if tab := m.tabAtX(columns + 5); tab != -1 {
+		t.Fatalf("expected no tab after the bar, got %d", tab)
 	}
 }
 

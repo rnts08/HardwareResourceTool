@@ -1,6 +1,6 @@
 # Hardware Resources Tool — User Manual
 
-This manual describes release 0.12.0. Hardware Resources Tool is a read-only
+This manual describes release 0.13.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.12.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.13.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -149,9 +149,11 @@ The seven windows are Overview, Storage, Network, Findings, Hardware,
 Thermal, and Top. Select them with 1–7. Tab, Right arrow, and l move forward.
 Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down scroll the
 active window vertically; < and > or Shift+arrows scroll it horizontally;
-Space pauses and resumes collection; r forces an immediate refresh; ? shows
-help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
-warning, info).
+d on Hardware opens a picker of VMs, GPUs, PCI devices, and DIMMs where j/k
+select and Enter expands a field-by-field detail pane; Esc closes the pane or
+picker; clicking a tab header row switches views; Space pauses and resumes
+collection; r forces an immediate refresh; ? shows help; and q or Ctrl+C
+exits. Findings are color-coded by severity (critical, warning, info).
 
 ### Overview
 
@@ -242,6 +244,14 @@ configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
 memory, and NUMA nodes. Memory-device rows show locator, size, type, speed,
 configured speed, and EDAC corrected/uncorrected errors where available.
 
+Pressing `d` opens a picker of every VM, GPU, PCI device, and DIMM reported in
+this capture. `j`/`k` move the selection and Enter opens a detail pane that
+shows the full field breakdown for the chosen item: VMs expand to balloon and
+QMP state, per-disk sources, per-NIC host correlation and rates, NUMA
+residency, and PCI attachments; GPUs to NVML/MIG/ECC state; PCI devices to
+link/capability/BAR/AER fields; DIMMs to speed and ECC counters. Esc returns
+from the pane to the picker, and Esc again closes the picker.
+
 ### Thermal
 
 Thermal zones show zone name, type (for example `x86_pkg_temp`), current
@@ -259,7 +269,8 @@ Top processes lists the ten highest-CPU host processes. Rows show the process
 name, PID, CPU rate between the last two samples, resident set size, and
 state. The first sample cannot produce a CPU rate, so it is shown as zero
 until a second snapshot is taken. Processes above 90% CPU are highlighted as
-a warning.
+a warning, and QEMU/KVM host processes are flagged with a `[QEMU]` marker so
+the hot guest host-process is identifiable at a glance.
 
 ## 5. Text report interpretation
 

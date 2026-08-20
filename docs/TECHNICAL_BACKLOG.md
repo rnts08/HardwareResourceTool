@@ -229,7 +229,7 @@ hosts when a snapshot is cheap.
 Acceptance: a large-host snapshot completes within one interval; benchmarks
 show the throttled path is faster; VM rows state what is unknown.
 
-### 0.13.0 — TUI interaction depth
+### 0.13.0 — TUI interaction depth ✅ shipped in 0.13.0
 
 - Add a focused detail pane for devices and VMs (selected item expands to show
   balloon/QMP/disks/NICs/NUMA breakdown) instead of one enormous line per item.

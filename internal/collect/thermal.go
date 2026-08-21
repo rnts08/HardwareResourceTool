@@ -55,6 +55,15 @@ func (c *Collector) collectThermal(s *model.Snapshot) error {
 			label, _ := readTrimmed(base + "_label")
 			maximum, _ := readMilliCelsius(base + "_max")
 			critical, _ := readMilliCelsius(base + "_crit")
+			// Some drivers expose implausible limit values (for example an
+			// uninitialized NVMe drive-reported maximum); treat anything over
+			// 300 C as unknown rather than reporting it.
+			if maximum > 300 {
+				maximum = 0
+			}
+			if critical > 300 {
+				critical = 0
+			}
 			alarm := readUint(filepath.Join(base+"_alarm")) > 0
 			thermal.Sensors = append(thermal.Sensors, model.Temperature{Name: filepath.Base(path), Sensor: sensor, Label: label, Source: source, Kind: kind, Current: current, Max: maximum, Critical: critical, Alarm: alarm, PCIPath: pciPath})
 		}

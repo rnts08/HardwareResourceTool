@@ -10,7 +10,10 @@ import (
 	"hardware-resources-tool/internal/model"
 )
 
-const topProcessLimit = 10
+const (
+	topProcessLimit = 10
+	maxCmdlineRunes = 200
+)
 
 // collectTopProcesses samples the highest CPU consumers among all host
 // processes. Per-process jiffies deltas between snapshots drive the CPU rate,
@@ -50,7 +53,7 @@ func (c *Collector) collectTopProcesses(s *model.Snapshot, raw *rawCounters, sec
 			cpu = float64(jiffies-previous) / (seconds * 100.0) * 100
 		}
 		raw.processes[pid] = jiffies
-		sample := processSample{ProcessSample: model.ProcessSample{PID: pid, Name: name, CPUPercent: cpu}, pid: uint64(pid)}
+		sample := processSample{ProcessSample: model.ProcessSample{PID: pid, Name: name, CPUPercent: cpu, Jiffies: jiffies}, pid: uint64(pid)}
 		if statm, readErr := os.ReadFile(filepath.Join(base, "statm")); readErr == nil {
 			values := strings.Fields(string(statm))
 			if len(values) > 1 {
@@ -61,6 +64,9 @@ func (c *Collector) collectTopProcesses(s *model.Snapshot, raw *rawCounters, sec
 		}
 		if fields := strings.Fields(string(stat)); len(fields) > 2 {
 			sample.State = fields[2]
+		}
+		if cmdline, readErr := os.ReadFile(filepath.Join(base, "cmdline")); readErr == nil {
+			sample.Cmdline = truncateRunes(strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " ")), maxCmdlineRunes)
 		}
 		candidates = append(candidates, sample)
 	}
@@ -78,4 +84,17 @@ func (c *Collector) collectTopProcesses(s *model.Snapshot, raw *rawCounters, sec
 		s.TopProcesses = append(s.TopProcesses, sample.ProcessSample)
 	}
 	return nil
+}
+
+// truncateRunes caps a string to at most limit runes, appending an ellipsis
+// when the content was cut.
+func truncateRunes(value string, limit int) string {
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	if limit <= 1 {
+		return "…"
+	}
+	return string(runes[:limit-1]) + "…"
 }

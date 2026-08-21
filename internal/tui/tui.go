@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -17,31 +18,33 @@ const historyLimit = 60
 type tickMsg time.Time
 
 type modelState struct {
-	collector    *collect.Collector
-	interval     time.Duration
-	thresholds   analyze.Thresholds
-	snapshot     model.Snapshot
-	history      []model.Snapshot
-	findings     []model.Finding
-	err          error
-	tab          int
-	width        int
-	height       int
-	offset       int
-	xoffset      int
-	offsets      [tabCount]int
-	xoffsets     [tabCount]int
-	collecting   bool
-	paused       bool
-	showHelp     bool
-	findingsMode bool
-	collectTime  time.Duration
-	pickerMode   bool
-	detailMode   bool
-	pickerItems  []pickerItem
-	pickerSel    int
-	detailTitle  string
-	detailLines  []string
+	collector      *collect.Collector
+	interval       time.Duration
+	thresholds     analyze.Thresholds
+	snapshot       model.Snapshot
+	history        []model.Snapshot
+	findings       []model.Finding
+	err            error
+	tab            int
+	width          int
+	height         int
+	offset         int
+	xoffset        int
+	offsets        [tabCount]int
+	xoffsets       [tabCount]int
+	collecting     bool
+	paused         bool
+	showHelp       bool
+	findingsMode   bool
+	processSort    byte
+	processCmdline bool
+	collectTime    time.Duration
+	pickerMode     bool
+	detailMode     bool
+	pickerItems    []pickerItem
+	pickerSel      int
+	detailTitle    string
+	detailLines    []string
 }
 
 type pickerItem struct {
@@ -54,7 +57,7 @@ type pickerItem struct {
 // Thermal. Findings is available through the f shortcut instead of a tab.
 const tabCount = 7
 
-var tabs = []string{"Overview", "Top", "CPU/Memory", "Hardware", "Storage", "Network", "Thermal"}
+var tabs = []string{"Overview", "Processes", "CPU/Memory", "Hardware", "Storage", "Network", "Thermal"}
 
 var (
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -163,6 +166,14 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.pickerMode && !m.detailMode && !m.showHelp {
 				m.findingsMode = !m.findingsMode
 				m.offset, m.xoffset = 0, 0
+			}
+		case "c":
+			if !m.pickerMode && !m.detailMode && !m.showHelp && m.tab == 1 {
+				m.processCmdline = !m.processCmdline
+			}
+		case "C", "M", "L":
+			if !m.pickerMode && !m.detailMode && !m.showHelp && m.tab == 1 {
+				m.processSort = msg.String()[0]
 			}
 		case "g":
 			if !m.pickerMode {
@@ -670,7 +681,7 @@ func pciBARSummarySuffix(device model.PCIDevice) string {
 func (m modelState) tabContent() string {
 	switch m.tab {
 	case 1:
-		return viewTop(m.snapshot)
+		return viewTop(m.snapshot, m.history, m.processSort, m.processCmdline)
 	case 2:
 		return viewCPUMemory(m.snapshot, m.history, m.thresholds)
 	case 3:
@@ -860,8 +871,10 @@ func renderHelp(thresholds analyze.Thresholds) string {
 	return strings.Join([]string{
 		"Help",
 		"",
-		"  1-7 or h/l/tab     switch tabs (Overview, Top, CPU/Memory, Hardware, Storage, Network, Thermal)",
+		"  1-7 or h/l/tab     switch tabs (Overview, Processes, CPU/Memory, Hardware, Storage, Network, Thermal)",
 		"  f                  toggle the findings view",
+		"  c                  on Processes: toggle full command lines",
+		"  C / M / L          on Processes: sort by cpu, memory, lifetime cpu",
 		"  j/k, PgUp/PgDn     scroll the active view vertically",
 		"  g / G              jump to the top / bottom of the active view",
 		"  </>, shift+arrows  scroll the active view horizontally",
@@ -1140,26 +1153,72 @@ func viewThermal(snapshot model.Snapshot) string {
 	return b.String()
 }
 
-func viewTop(snapshot model.Snapshot) string {
+func viewTop(snapshot model.Snapshot, history []model.Snapshot, sortKey byte, showCmdline bool) string {
 	var b strings.Builder
-	b.WriteString("Top processes by CPU\n")
+	b.WriteString("Processes")
+	b.WriteString("  sort " + indicator(sortKey == 'C' || sortKey == 0, "C") + " cpu  " +
+		indicator(sortKey == 'M', "M") + " mem  " +
+		indicator(sortKey == 'L', "L") + " life")
+	b.WriteString("  c full-command " + indicator(showCmdline, "c") + "\n")
+	b.WriteString("  host cpu " + sparkline(historyValues(history, func(s model.Snapshot) float64 { return 100 - s.CPU.IdlePercent }), 0, 100) + "\n")
 	if len(snapshot.TopProcesses) == 0 {
 		b.WriteString("  No process samples available.\n")
 		return b.String()
 	}
-	for _, process := range snapshot.TopProcesses {
+	processes := make([]model.ProcessSample, len(snapshot.TopProcesses))
+	copy(processes, snapshot.TopProcesses)
+	switch sortKey {
+	case 'M':
+		sort.SliceStable(processes, func(i, j int) bool { return processes[i].RSSBytes > processes[j].RSSBytes })
+	case 'L':
+		sort.SliceStable(processes, func(i, j int) bool { return processes[i].Jiffies > processes[j].Jiffies })
+	default:
+		sort.SliceStable(processes, func(i, j int) bool {
+			if processes[i].CPUPercent != processes[j].CPUPercent {
+				return processes[i].CPUPercent > processes[j].CPUPercent
+			}
+			return processes[i].RSSBytes > processes[j].RSSBytes
+		})
+	}
+	for _, process := range processes {
 		qemu := ""
 		if isQEMUSample(process, snapshot.Virtualization.VirtualMachines) {
 			qemu = "  [QEMU]"
 		}
-		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %s%s\n", process.Name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), process.State, qemu)
+		name := process.Name
+		if showCmdline && process.Cmdline != "" {
+			name = process.Cmdline
+		}
+		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %-14s%s\n", name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), processStateLabel(process.State), qemu)
 		if process.CPUPercent >= 90 {
 			line = markWarning + line
 		}
 		b.WriteString(line)
 	}
-	b.WriteString("\n  CPU percent is the rate between the last two samples.\n")
+	b.WriteString("\n  cpu is the rate between the last two samples; lifetime-cpu is cumulative since process start.\n")
 	return b.String()
+}
+
+// processStateLabel renders a friendly process state with the kernel letter.
+func processStateLabel(state string) string {
+	names := map[string]string{
+		"R": "Running",
+		"S": "Sleeping",
+		"D": "Disk sleep",
+		"Z": "Zombie",
+		"T": "Stopped",
+		"t": "Tracing stop",
+		"I": "Idle",
+		"W": "Paging",
+		"P": "Parked",
+	}
+	if name, ok := names[state]; ok && state != "" {
+		return fmt.Sprintf("%s (%s)", name, emph(state))
+	}
+	if state == "" {
+		return "Unknown"
+	}
+	return state
 }
 
 func isQEMUSample(process model.ProcessSample, vms []model.VirtualMachine) bool {

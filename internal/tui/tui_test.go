@@ -24,7 +24,7 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
 	view := stripANSI((modelState{tab: 1, thresholds: analyze.DefaultThresholds}).View())
-	for _, expected := range []string{"[2 Top]", "No process samples available.", "1-7: tabs"} {
+	for _, expected := range []string{"[2 Processes]", "No process samples available.", "1-7: tabs"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -83,7 +83,7 @@ func TestKernelEventDeltas(t *testing.T) {
 
 func TestViewTopShowsProcesses(t *testing.T) {
 	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{{PID: 42, Name: "qemu-system-x86_64", CPUPercent: 95.5, RSSBytes: 1 << 30, State: "R"}}}
-	view := viewTop(snapshot)
+	view := stripANSI(viewTop(snapshot, nil, 0, false))
 	for _, expected := range []string{"qemu-system-x86_64", "pid      42", "cpu   95.5%", "1.0 GiB"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
@@ -92,7 +92,7 @@ func TestViewTopShowsProcesses(t *testing.T) {
 }
 
 func TestViewTopEmptyState(t *testing.T) {
-	if !contains(viewTop(model.Snapshot{}), "No process samples available.") {
+	if !contains(viewTop(model.Snapshot{}, nil, 0, false), "No process samples available.") {
 		t.Fatal("empty top view missing hint")
 	}
 }
@@ -106,7 +106,7 @@ func TestViewTopMarksQEMUProcesses(t *testing.T) {
 		},
 		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "guest-a", PID: 1234}}},
 	}
-	view := viewTop(snapshot)
+	view := stripANSI(viewTop(snapshot, nil, 0, false))
 	if count := strings.Count(view, "[QEMU]"); count != 2 {
 		t.Fatalf("expected 2 QEMU markers, got %d: %s", count, view)
 	}
@@ -335,5 +335,55 @@ func TestThermalValuesAreBracketed(t *testing.T) {
 	view := viewThermal(snapshot)
 	if !strings.Contains(view, emph("[  45.5]")) {
 		t.Fatalf("zone current not bracketed+emphasized: %q", view)
+	}
+}
+
+func TestProcessesViewSortModes(t *testing.T) {
+	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{
+		{PID: 1, Name: "cpu-hog", CPUPercent: 80, RSSBytes: 100, Jiffies: 10},
+		{PID: 2, Name: "mem-hog", CPUPercent: 1, RSSBytes: 900, Jiffies: 5000},
+	}}
+	cpuOrder := viewTop(snapshot, nil, 'C', false)
+	if strings.Index(cpuOrder, "cpu-hog") > strings.Index(cpuOrder, "mem-hog") {
+		t.Fatalf("cpu sort wrong: %s", cpuOrder)
+	}
+	memOrder := viewTop(snapshot, nil, 'M', false)
+	if strings.Index(memOrder, "mem-hog") > strings.Index(memOrder, "cpu-hog") {
+		t.Fatalf("memory sort wrong: %s", memOrder)
+	}
+	lifeOrder := viewTop(snapshot, nil, 'L', false)
+	if strings.Index(lifeOrder, "mem-hog") > strings.Index(lifeOrder, "cpu-hog") {
+		t.Fatalf("lifetime sort wrong: %s", lifeOrder)
+	}
+}
+
+func TestProcessesViewIndicatorsAndStates(t *testing.T) {
+	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{{PID: 3, Name: "sleeper", State: "S"}}}
+	view := stripANSI(viewTop(snapshot, nil, 0, false))
+	for _, expected := range []string{"[C] cpu", "Sleeping (S)"} {
+		if !contains(view, expected) {
+			t.Fatalf("view missing %q: %s", expected, view)
+		}
+	}
+}
+
+func TestProcessesViewCmdlineToggle(t *testing.T) {
+	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{{PID: 4, Name: "kvm", Cmdline: "/usr/bin/kvm -name guest=vm1"}}}
+	plain := stripANSI(viewTop(snapshot, nil, 0, false))
+	if contains(plain, "/usr/bin/kvm -name guest=vm1") {
+		t.Fatalf("cmdline shown while toggle off: %s", plain)
+	}
+	full := stripANSI(viewTop(snapshot, nil, 0, true))
+	if !contains(full, "/usr/bin/kvm -name guest=vm1") {
+		t.Fatalf("cmdline missing while toggle on: %s", full)
+	}
+}
+
+func TestProcessStateLabelUnknown(t *testing.T) {
+	if got := stripANSI(processStateLabel("X")); got != "X" {
+		t.Fatalf("unknown state label = %q", got)
+	}
+	if got := processStateLabel(""); got != "Unknown" {
+		t.Fatalf("empty state label = %q", got)
 	}
 }

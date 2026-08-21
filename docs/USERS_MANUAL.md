@@ -155,7 +155,7 @@ and UTC build time. It does not require root.
 
 ## 4. TUI windows and controls
 
-The seven windows are Overview, Top, CPU/Memory, Hardware, Storage, Network,
+The seven windows are Overview, Processes, CPU/Memory, Hardware, Storage, Network,
 and Thermal, in that order. Select them with 1–7. Tab, Right arrow, and l
 move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
 scroll the active window vertically; g and G jump to the top and bottom; < and
@@ -308,14 +308,21 @@ Sensors whose device is PCI-attached show the backing PCI address, and GPU
 temperature/power from hwmon is merged into the GPU inventory only when NVML
 does not provide a reading.
 
-### Top
+### Processes
 
-Top processes lists the ten highest-CPU host processes. Rows show the process
-name, PID, CPU rate between the last two samples, resident set size, and
-state. The first sample cannot produce a CPU rate, so it is shown as zero
-until a second snapshot is taken. Processes above 90% CPU are highlighted as
-a warning, and QEMU/KVM host processes are flagged with a `[QEMU]` marker so
-the hot guest host-process is identifiable at a glance.
+The Processes window lists the ten highest-CPU host processes with a host CPU
+history sparkline at the top. Rows show the process name, PID, CPU rate
+between the last two samples, resident set size, and a friendly state such as
+`Sleeping (S)`. The first sample cannot produce a CPU rate, so it is shown as
+zero until a second snapshot is taken. Processes above 90% CPU are highlighted
+as a warning, and QEMU/KVM host processes are flagged with a `[QEMU]` marker
+so the hot guest host-process is identifiable at a glance.
+
+Sorting is controlled from the keyboard: `C` sorts by CPU rate (default),
+`M` by resident memory, and `L` by cumulative CPU time since process start;
+the active sort is shown in bold brackets in the header. Pressing `c` toggles
+between the short command name and the full `/proc/PID/cmdline` command line
+(truncated to 200 characters).
 
 ## 5. Text report interpretation
 

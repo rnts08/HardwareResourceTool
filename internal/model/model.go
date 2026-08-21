@@ -438,9 +438,11 @@ type Limits struct {
 type ProcessSample struct {
 	PID        int     `json:"pid"`
 	Name       string  `json:"name"`
+	Cmdline    string  `json:"cmdline,omitempty"`
 	CPUPercent float64 `json:"cpu_percent"`
 	RSSBytes   uint64  `json:"rss_bytes"`
 	State      string  `json:"state,omitempty"`
+	Jiffies    uint64  `json:"jiffies,omitempty"`
 }
 
 type Finding struct {

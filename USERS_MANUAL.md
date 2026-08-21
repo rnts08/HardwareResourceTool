@@ -94,7 +94,7 @@ fields. Useful checks are:
     jq '.findings' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances,mig_instances,nvlink_version,nvlink_count,nvlink_bandwidth_gbps,nvlinks}' /tmp/hardware-resources-live.ABC123/report.json
-    jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,qmp_block_read_bytes,qmp_block_write_bytes,qmp_block_devices,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.top_processes' /tmp/hardware-resources-live.ABC123/report.json
 
 Replace ABC123 with the actual directory name. If a field is absent, check
@@ -262,8 +262,11 @@ state.
 
 KVM/QEMU rows show VMID where available, running state, configured vCPUs, process/cgroup CPU,
 configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
-memory, and NUMA nodes. Memory-device rows show locator, size, type, speed,
-configured speed, and EDAC corrected/uncorrected errors where available.
+memory, and NUMA nodes. When QMP is reachable they also add cumulative block
+statistics per device (read/write bytes and operations from the read-only
+`query-blockstats` accounting query). Memory-device rows show locator, size,
+type, speed, configured speed, and EDAC corrected/uncorrected errors where
+available.
 
 Pressing `d` opens a picker of every VM, GPU, PCI device, and DIMM reported in
 this capture. `j`/`k` move the selection and Enter opens a detail pane that
@@ -403,6 +406,9 @@ vCPUs/memory, process and cgroup CPU, process RSS, cgroup current/max/path and
 availability, process/cgroup I/O, hugepages and hugepage_bytes, runtime
 anonymous hugepage and hugetlb bytes, per-node runtime numa_maps bytes, parsed
 numa_nodes, QMP version, base/plugged memory, total/enabled vCPU counts,
+cumulative QMP block statistics (qmp_block_read_bytes, qmp_block_write_bytes,
+qmp_block_read_ops, qmp_block_write_ops) plus the per-device
+qmp_block_devices list with device/node names,
 qmp_status, qmp_available, qmp_error, runtime_available, balloon
 enabled/reported/guest-report/source flags, balloon
 actual/target/reclaimed/committed/available bytes, and disks, nics, and
@@ -423,7 +429,10 @@ they do not indicate device activity.
 
 numa.nodes is the host node count. numa.remote_events_per_second is derived
 from Linux node numastat remote/foreign counters and is a locality signal, not
-a direct latency measurement.
+a direct latency measurement. numa.node_hugepages lists the per-node hugetlb
+pool (node, page size, total, and free counts) read from sysfs when exposed.
+memory.hugepages_total/hugepages_free/hugepage_size_bytes/hugetlb_used_bytes
+report the global pool from `/proc/meminfo` when hugepages are configured.
 
 system contains cpu_governor, THP policy, swappiness, current process limits,
 PID 1 host_limits, selected sysctls for overcommit, dirty-page ratios, and the
@@ -479,6 +488,5 @@ availability, migration, latency, and data integrity.
 
 ## 8. Current limitations
 
-Not yet implemented are richer QMP domain statistics; Redfish/BMC inventory;
-and broad vendor-specific validation captures. Use platform-native sources
-when a field is unavailable.
+Not yet implemented are Redfish/BMC inventory and broad vendor-specific
+validation captures. Use platform-native sources when a field is unavailable.

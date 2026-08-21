@@ -155,14 +155,28 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 					allowed[node] = true
 				}
 				outside := []int{}
+				var totalBytes, outsideBytes uint64
 				for node, bytes := range vm.RuntimeNUMABytes {
+					totalBytes += bytes
 					if bytes > 0 && !allowed[node] {
 						outside = append(outside, node)
+						outsideBytes += bytes
 					}
 				}
 				if len(outside) > 0 {
-					findings = append(findings, model.Finding{Severity: "info", Category: "numa", Title: "QEMU memory is resident outside configured NUMA nodeset", Evidence: fmt.Sprintf("%s has runtime pages on nodes %v outside configured nodes %v", vm.Name, outside, vm.NUMANodes), Recommendation: "Verify whether migration, memory policy, hotplug, shared mappings, or incomplete numa_maps visibility explains the placement before changing pinning."})
+					share := 0.0
+					if totalBytes > 0 {
+						share = float64(outsideBytes) / float64(totalBytes) * 100
+					}
+					severity := "info"
+					if share > 25 {
+						severity = "warning"
+					}
+					findings = append(findings, model.Finding{Severity: severity, Category: "numa", Title: "QEMU memory is resident outside configured NUMA nodeset", Evidence: fmt.Sprintf("%s has %.1f%% of runtime memory (%s of %s) on nodes %v outside configured nodes %v", vm.Name, share, formatBytesForFindings(outsideBytes), formatBytesForFindings(totalBytes), outside, vm.NUMANodes), Recommendation: "Verify whether migration, memory policy, hotplug, shared mappings, or incomplete numa_maps visibility explains the placement before changing pinning."})
 				}
+			}
+			if vm.Hugepages && vm.RuntimeAvailable && vm.Running && vm.RuntimeHugetlbBytes == 0 {
+				findings = append(findings, model.Finding{Severity: "info", Category: "memory", Title: "VM configured for hugepages uses none at runtime", Evidence: fmt.Sprintf("%s requests hugepage-backed memory but its QEMU process reports no hugetlb mappings", vm.Name), Recommendation: "Check whether the hugetlb pool was available at start-up, whether the guest actually touched the pages, and whether mount/permission issues silently fell back to ordinary pages."})
 			}
 			if vm.CgroupAvailable && vm.MemoryMaxBytes > 0 && float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes) > 0.9 {
 				findings = append(findings, model.Finding{Severity: "warning", Category: "virtualization", Title: "VM cgroup memory is near its limit", Evidence: fmt.Sprintf("%s uses %.1f%% of its cgroup memory limit", vm.Name, float64(vm.MemoryCurrentBytes)/float64(vm.MemoryMaxBytes)*100), Recommendation: "Review guest memory pressure, ballooning, host reclaim, and the domain memory limit before adding workload or increasing overcommit."})
@@ -228,5 +242,30 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "thermal", Title: "Fan is reporting no rotation", Evidence: fmt.Sprintf("%s %s reports %d RPM", fan.Name, fan.Label, fan.Input), Recommendation: "Verify fan power, connector seating, and controller operation; a stalled fan can cause thermal throttling or hardware damage."})
 		}
 	}
+	if s.Memory.HugepagesTotal > 0 && s.Memory.HugepagesFree == 0 {
+		hugepageBacked := []string{}
+		for _, vm := range s.Virtualization.VirtualMachines {
+			if vm.Running && vm.Hugepages {
+				hugepageBacked = append(hugepageBacked, vm.Name)
+			}
+		}
+		if len(hugepageBacked) > 0 {
+			findings = append(findings, model.Finding{Severity: "warning", Category: "memory", Title: "Host hugetlb pool has no free pages", Evidence: fmt.Sprintf("all %d hugepages are in use while running VMs %v depend on hugetlb memory", s.Memory.HugepagesTotal, hugepageBacked), Recommendation: "Plan headroom before starting or ballooning up hugepage-backed guests; with zero free pages new allocations fall back or fail."})
+		}
+	}
 	return findings
+}
+
+// formatBytesForFindings renders byte counts in human units for evidence text.
+func formatBytesForFindings(value uint64) string {
+	const giB = 1024 * 1024 * 1024
+	const miB = 1024 * 1024
+	switch {
+	case value >= giB:
+		return fmt.Sprintf("%.1f GiB", float64(value)/giB)
+	case value >= miB:
+		return fmt.Sprintf("%.1f MiB", float64(value)/miB)
+	default:
+		return fmt.Sprintf("%d B", value)
+	}
 }

@@ -58,6 +58,12 @@ func WriteText(w io.Writer, result model.Report) error {
 	}
 	fmt.Fprintf(w, "CPU: %.1f%% user, %.1f%% system, %.1f%% iowait, %.1f%% idle; load %.2f/%.2f/%.2f\n", result.Snapshot.CPU.UserPercent, result.Snapshot.CPU.SystemPercent, result.Snapshot.CPU.IOWaitPercent, result.Snapshot.CPU.IdlePercent, result.Snapshot.CPU.Load1, result.Snapshot.CPU.Load5, result.Snapshot.CPU.Load15)
 	fmt.Fprintf(w, "Memory: %.1f%% used, %.1f GiB available\n", result.Snapshot.Memory.UsedPercent, float64(result.Snapshot.Memory.AvailableBytes)/(1024*1024*1024))
+	if result.Snapshot.Memory.HugepagesTotal > 0 {
+		fmt.Fprintf(w, "Hugetlb pool: %d/%d free x %.1f MiB\n", result.Snapshot.Memory.HugepagesFree, result.Snapshot.Memory.HugepagesTotal, float64(result.Snapshot.Memory.HugepageSizeBytes)/(1024*1024))
+	}
+	for _, node := range result.Snapshot.NUMA.NodeHugepages {
+		fmt.Fprintf(w, "  NUMA node %d hugetlb: %d/%d free x %.1f MiB\n", node.Node, node.Free, node.Total, float64(node.SizeBytes)/(1024*1024))
+	}
 	fmt.Fprintf(w, "System: governor %q, THP %q, swappiness %d, NUMA nodes %d, remote events %d/s\n", result.Snapshot.System.CPUGovernor, result.Snapshot.System.THP, result.Snapshot.System.Swappiness, result.Snapshot.NUMA.Nodes, result.Snapshot.NUMA.RemoteEvents)
 	if events := result.Snapshot.System.KernelEvents; len(events.Recent) > 0 || events.OOM+events.IOErrors+events.PCIeErrors+events.Hardware+events.NVIDIA+events.StorageResets+events.LinkFailures > 0 {
 		fmt.Fprintf(w, "Kernel events: OOM %d, I/O %d, PCIe %d, hardware %d, NVIDIA %d, storage resets %d, link failures %d\n", events.OOM, events.IOErrors, events.PCIeErrors, events.Hardware, events.NVIDIA, events.StorageResets, events.LinkFailures)
@@ -71,6 +77,12 @@ func WriteText(w io.Writer, result model.Report) error {
 			fmt.Fprintf(w, "VM: %s %s running=%t vCPU %d/%d CPU %.1f%% cgroup %.1f%% memory %.1f GiB current %.1f GiB RSS %.1f MiB huge/hugetlb %.1f/%.1f MiB QMP %s base/plug %.1f/%.1f GiB I/O %.1f/%.1f MiB balloon actual %.1f GiB reclaimed %.1f GiB target %.1f GiB committed %.1f GiB available %.1f GiB source %s status %s NUMA %v hugepages=%t\n", vm.Name, vm.Source, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), float64(vm.ReadBytes)/(1024*1024), float64(vm.WriteBytes)/(1024*1024), float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonReclaimedBytes)/(1024*1024*1024), float64(vm.BalloonTargetBytes)/(1024*1024*1024), float64(vm.BalloonCommittedBytes)/(1024*1024*1024), float64(vm.BalloonAvailableBytes)/(1024*1024*1024), vm.BalloonSource, vm.QMPStatus, vm.NUMANodes, vm.Hugepages)
 			for _, disk := range vm.Disks {
 				fmt.Fprintf(w, "  VM disk: %s %s (%s)\n", disk.Target, disk.Source, disk.Bus)
+			}
+			if len(vm.QMPBlockDevices) > 0 {
+				fmt.Fprintf(w, "  VM QMP block I/O: read %.1f MiB/%d ops, write %.1f MiB/%d ops\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps)
+				for _, stat := range vm.QMPBlockDevices {
+					fmt.Fprintf(w, "    %s node=%s rd %.1f MiB/%d ops wr %.1f MiB/%d ops\n", stat.Device, stat.NodeName, float64(stat.ReadBytes)/(1024*1024), stat.ReadOps, float64(stat.WriteBytes)/(1024*1024), stat.WriteOps)
+				}
 			}
 			for _, nic := range vm.NICs {
 				fmt.Fprintf(w, "  VM NIC: %s %s host=%s rx %.1f/tx %.1f KiB/s MAC %s\n", nic.Target, nic.Source, nic.HostNetwork, nic.RXBytesPerSecond/1024, nic.TXBytesPerSecond/1024, nic.MAC)

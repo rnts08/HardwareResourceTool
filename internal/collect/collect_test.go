@@ -486,3 +486,26 @@ func FuzzDecodeMountField(f *testing.F) {
 		_ = decodeMountField(value)
 	})
 }
+
+func TestCollectNodeHugepages(t *testing.T) {
+	dir := t.TempDir()
+	nodeDir := filepath.Join(dir, "node1")
+	hugeDir := filepath.Join(nodeDir, "hugepages", "hugepages-2048kB")
+	if err := os.MkdirAll(hugeDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hugeDir, "nr_hugepages"), []byte("16\n"), 0o644); err != nil {
+		t.Fatalf("write nr: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(hugeDir, "free_hugepages"), []byte("4\n"), 0o644); err != nil {
+		t.Fatalf("write free: %v", err)
+	}
+	result := collectNodeHugepages(nodeDir)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 hugepage pool entry, got %d", len(result))
+	}
+	entry := result[0]
+	if entry.Node != 1 || entry.SizeBytes != 2048*1024 || entry.Total != 16 || entry.Free != 4 {
+		t.Errorf("unexpected node hugepage entry: %#v", entry)
+	}
+}

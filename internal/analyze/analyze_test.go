@@ -113,3 +113,56 @@ func TestUnboundEndpointFinding(t *testing.T) {
 		t.Fatalf("unexpected unbound-endpoint findings: %#v", findings)
 	}
 }
+
+func TestNUMAResidencyEscalation(t *testing.T) {
+	gib := uint64(1024 * 1024 * 1024)
+	snapshot := model.Snapshot{Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
+		{Name: "pinned-vm", NUMANodes: []int{0}, RuntimeNUMABytes: map[int]uint64{0: gib, 1: 4 * gib}, RuntimeAvailable: true},
+	}}}
+	findings := Findings(snapshot)
+	var residency *model.Finding
+	for i := range findings {
+		if findings[i].Title == "QEMU memory is resident outside configured NUMA nodeset" {
+			residency = &findings[i]
+		}
+	}
+	if residency == nil {
+		t.Fatalf("expected residency finding, got %#v", findings)
+	}
+	if residency.Severity != "warning" {
+		t.Errorf("expected warning for 80%% remote residency, got %s", residency.Severity)
+	}
+}
+
+func TestHugepageConfiguredUnusedFinding(t *testing.T) {
+	snapshot := model.Snapshot{Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
+		{Name: "huge-vm", Hugepages: true, Running: true, RuntimeAvailable: true},
+	}}}
+	findings := Findings(snapshot)
+	found := false
+	for _, finding := range findings {
+		if finding.Title == "VM configured for hugepages uses none at runtime" && finding.Severity == "info" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected unused-hugepage finding, got %#v", findings)
+	}
+}
+
+func TestHugetlbPoolExhaustedFinding(t *testing.T) {
+	snapshot := model.Snapshot{
+		Memory:         model.Memory{HugepagesTotal: 16, HugepagesFree: 0},
+		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{{Name: "huge-vm", Hugepages: true, Running: true}}},
+	}
+	findings := Findings(snapshot)
+	found := false
+	for _, finding := range findings {
+		if finding.Title == "Host hugetlb pool has no free pages" && finding.Severity == "warning" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected hugetlb-pool finding, got %#v", findings)
+	}
+}

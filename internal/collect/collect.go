@@ -211,6 +211,10 @@ func (c *Collector) collectMemory(s *model.Snapshot, raw *rawCounters) error {
 	s.Memory.AvailableBytes = values["MemAvailable"]
 	s.Memory.SwapTotalBytes = values["SwapTotal"]
 	s.Memory.SwapFreeBytes = values["SwapFree"]
+	s.Memory.HugepagesTotal = values["HugePages_Total"]
+	s.Memory.HugepagesFree = values["HugePages_Free"]
+	s.Memory.HugepageSizeBytes = values["Hugepagesize"]
+	s.Memory.HugetlbUsedBytes = values["Hugetlb"]
 	if s.Memory.TotalBytes > 0 {
 		s.Memory.UsedPercent = float64(s.Memory.TotalBytes-s.Memory.AvailableBytes) / float64(s.Memory.TotalBytes) * 100
 	}
@@ -229,6 +233,35 @@ func (c *Collector) collectMemory(s *model.Snapshot, raw *rawCounters) error {
 		}
 	}
 	return nil
+}
+
+// collectNodeHugepages reads the per-node hugetlb pool state from sysfs. The
+// node directory looks like .../node1/hugepages/hugepages-2048kB/ with
+// nr_hugepages and free_hugepages accounting files.
+func collectNodeHugepages(nodeDir string) []model.NUMANodeHugepages {
+	base := filepath.Base(nodeDir)
+	node, err := strconv.Atoi(strings.TrimPrefix(base, "node"))
+	if err != nil {
+		return nil
+	}
+	var result []model.NUMANodeHugepages
+	for _, dir := range glob(filepath.Join(nodeDir, "hugepages/hugepages-*kB")) {
+		sizePart := strings.TrimSuffix(filepath.Base(dir), "kB")
+		sizePart = strings.TrimPrefix(sizePart, "hugepages-")
+		sizeKB, err := strconv.ParseUint(sizePart, 10, 64)
+		if err != nil {
+			continue
+		}
+		entry := model.NUMANodeHugepages{Node: node, SizeBytes: sizeKB * 1024}
+		if data, err := os.ReadFile(filepath.Join(dir, "nr_hugepages")); err == nil {
+			entry.Total, _ = parseUint(strings.TrimSpace(string(data)))
+		}
+		if data, err := os.ReadFile(filepath.Join(dir, "free_hugepages")); err == nil {
+			entry.Free, _ = parseUint(strings.TrimSpace(string(data)))
+		}
+		result = append(result, entry)
+	}
+	return result
 }
 
 func (c *Collector) collectDisks(s *model.Snapshot, raw *rawCounters) error {
@@ -451,6 +484,7 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 				}
 			}
 		}
+		s.NUMA.NodeHugepages = append(s.NUMA.NodeHugepages, collectNodeHugepages(node)...)
 	}
 	if limits, err := readLimits("/proc/self/limits"); err == nil {
 		s.System.OpenFiles, s.System.MaxLocked, s.System.MaxProcesses, s.System.MaxStack = limits.OpenFiles, limits.MaxLocked, limits.MaxProcesses, limits.MaxStack

@@ -434,6 +434,16 @@ func vmDetail(vm model.VirtualMachine) (string, []string) {
 		fmt.Sprintf("  balloon actual   %s  target %s  reclaimed %s", formatBytes(vm.BalloonActualBytes), formatBytes(vm.BalloonTargetBytes), formatBytes(vm.BalloonReclaimedBytes)),
 		fmt.Sprintf("  balloon commit   %s  available %s", formatBytes(vm.BalloonCommittedBytes), formatBytes(vm.BalloonAvailableBytes)),
 	)
+	if len(vm.QMPBlockDevices) > 0 {
+		lines = append(lines, fmt.Sprintf("  QMP block I/O    read %s (%d ops)  write %s (%d ops)", formatBytes(vm.QMPBlockReadBytes), vm.QMPBlockReadOps, formatBytes(vm.QMPBlockWriteBytes), vm.QMPBlockWriteOps))
+		for _, stat := range vm.QMPBlockDevices {
+			node := stat.NodeName
+			if node == "" {
+				node = "-"
+			}
+			lines = append(lines, fmt.Sprintf("    %-12s node %-12s rd %s/%d wr %s/%d", stat.Device, node, formatBytes(stat.ReadBytes), stat.ReadOps, formatBytes(stat.WriteBytes), stat.WriteOps))
+		}
+	}
 	lines = append(lines, "  disks")
 	for _, disk := range vm.Disks {
 		lines = append(lines, fmt.Sprintf("    %-4s %-6s %s", disk.Bus, disk.Target, disk.Source))
@@ -735,6 +745,12 @@ func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds 
 	b.WriteString(memoryLine)
 	fmt.Fprintf(&b, "        used   %s\n", sparkline(memoryUsed, 0, 100))
 	fmt.Fprintf(&b, "System  governor %q  THP %q  swappiness %d  NUMA nodes %d remote %d/s\n", snapshot.System.CPUGovernor, snapshot.System.THP, snapshot.System.Swappiness, snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
+	if snapshot.Memory.HugepagesTotal > 0 {
+		fmt.Fprintf(&b, "        hugetlb pool %d/%d free x %s\n", snapshot.Memory.HugepagesFree, snapshot.Memory.HugepagesTotal, formatBytes(snapshot.Memory.HugepageSizeBytes))
+	}
+	for _, node := range snapshot.NUMA.NodeHugepages {
+		fmt.Fprintf(&b, "        node%d hugetlb %d/%d free x %s\n", node.Node, node.Free, node.Total, formatBytes(node.SizeBytes))
+	}
 	fmt.Fprintf(&b, "        open files %d  processes %d  stack %s  locked memory %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxStack), formatBytes(snapshot.System.MaxLocked))
 	fmt.Fprintf(&b, "        host/init files %d  host/init processes %d\n", snapshot.System.HostLimits.OpenFiles, snapshot.System.HostLimits.MaxProcesses)
 	if events := snapshot.System.KernelEvents; len(events.Recent) > 0 || events.OOM+events.IOErrors+events.PCIeErrors+events.Hardware+events.NVIDIA+events.StorageResets+events.LinkFailures > 0 {
@@ -865,6 +881,9 @@ func viewHardware(snapshot model.Snapshot) string {
 		b.WriteString("\nKVM/QEMU domains\n")
 		for _, vm := range snapshot.Virtualization.VirtualMachines {
 			fmt.Fprintf(&b, "  %-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB huge/hugetlb %6.1f/%6.1f MiB QMP %s base/plug %6.1f/%6.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), vm.NUMANodes)
+			if len(vm.QMPBlockDevices) > 0 {
+				fmt.Fprintf(&b, "    block I/O rd %.1f MiB/%d ops wr %.1f MiB/%d ops across %d device(s)\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps, len(vm.QMPBlockDevices))
+			}
 		}
 	}
 	b.WriteString("\nMemory devices\n")

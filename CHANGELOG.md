@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.19.0 — 2026-08-21
+
+- Added read-only QMP block statistics per running VM: `query-blockstats`
+  (a pure accounting query that never mutates the domain) now feeds cumulative
+  read/write bytes and operations, aggregated totals plus a per-device list
+  with device/qdev name and node-name when QEMU reports them. Exposed as
+  `qmp_block_read_bytes`, `qmp_block_write_bytes`, `qmp_block_read_ops`,
+  `qmp_block_write_ops`, and `qmp_block_devices` in JSON, the TUI VM detail
+  pane and Hardware tab, and the text report.
+- Broadened runtime placement correlation: the out-of-NUMA-nodeset residency
+  finding now quantifies the remote share of process memory and escalates to a
+  warning above 25%; a VM configured for hugepages whose QEMU process shows no
+  hugetlb mappings at runtime is surfaced as an info finding; and a host
+  hugetlb pool with zero free pages while hugepage-backed guests are running
+  is raised as a warning.
+- Collected host hugetlb pool state from `/proc/meminfo` (`HugePages_Total`,
+  `HugePages_Free`, `Hugepagesize`, `Hugetlb`) and per-NUMA-node pools from
+  sysfs (`nodeN/hugepages/hugepages-*kB/{nr_hugepages,free_hugepages}`),
+  exposed as `hugepages_*` on memory, `node_hugepages` under NUMA, and shown
+  in the System view and text report.
+
 ## 0.18.0 — 2026-08-21
 
 - Enriched GPU telemetry with a per-instance MIG inventory: when MIG is

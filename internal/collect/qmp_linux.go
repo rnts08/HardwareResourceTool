@@ -18,6 +18,12 @@ type qmpBalloonData struct {
 	baseMemory, pluggedMemory uint64
 	vcpus, enabledVCPUs       int64
 	reported, guestReport     bool
+	blockDevices              []qmpBlockStat
+}
+
+type qmpBlockStat struct {
+	device, nodeName                         string
+	readBytes, writeBytes, readOps, writeOps uint64
 }
 
 func queryQMP(path string) (qmpBalloonData, bool) {
@@ -90,7 +96,37 @@ func queryQMP(path string) (qmpBalloonData, bool) {
 			}
 		}
 	}
-	return data, data.status != "" || data.reported || data.version != "" || data.baseMemory != 0 || data.vcpus != 0
+	// query-blockstats is a read-only accounting query; it never mutates the
+	// domain. Entries carry cumulative per-device byte and operation counters.
+	if response, err := writeQMPCommandAny(conn, reader, "query-blockstats"); err == nil {
+		if devices, ok := response.([]interface{}); ok {
+			for _, item := range devices {
+				entry, entryOK := item.(map[string]interface{})
+				if !entryOK {
+					continue
+				}
+				stat := qmpBlockStat{}
+				if name, ok := entry["qdev"].(string); ok && name != "" {
+					stat.device = name
+				} else if name, ok := entry["device"].(string); ok {
+					stat.device = name
+				}
+				if node, ok := entry["node-name"].(string); ok {
+					stat.nodeName = node
+				}
+				if stats, ok := entry["stats"].(map[string]interface{}); ok {
+					stat.readBytes, _ = qmpUint(stats["rd_bytes"])
+					stat.writeBytes, _ = qmpUint(stats["wr_bytes"])
+					stat.readOps, _ = qmpUint(stats["rd_operations"])
+					stat.writeOps, _ = qmpUint(stats["wr_operations"])
+				}
+				if stat.device != "" || stat.nodeName != "" {
+					data.blockDevices = append(data.blockDevices, stat)
+				}
+			}
+		}
+	}
+	return data, data.status != "" || data.reported || data.version != "" || data.baseMemory != 0 || data.vcpus != 0 || len(data.blockDevices) > 0
 }
 
 func writeQMPCommand(conn net.Conn, reader *bufio.Reader, command string) (map[string]interface{}, error) {

@@ -10,6 +10,12 @@ type qmpBalloonData struct {
 	baseMemory, pluggedMemory            uint64
 	vcpus, enabledVCPUs                  int64
 	reported, guestReport                bool
+	blockDevices                         []qmpBlockStat
+}
+
+type qmpBlockStat struct {
+	device, nodeName                         string
+	readBytes, writeBytes, readOps, writeOps uint64
 }
 
 func queryQMP(string) (qmpBalloonData, bool) { return qmpBalloonData{}, false }

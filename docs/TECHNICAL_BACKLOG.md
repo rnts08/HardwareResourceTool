@@ -301,13 +301,18 @@ cumulative read/write byte counters read with counter type 0 so counters are
 never reset. Nominal per-link bandwidth is derived from the NVLink major
 version and omitted when the version is unknown.
 
-### 0.19.0 — QEMU depth
+### 0.19.0 — QEMU depth ✅ shipped in 0.19.0
 
 - Richer read-only QMP statistics (e.g. block/io-stats where non-mutating) and
   broader runtime placement correlation against host NUMA and hugepage state.
 
 Acceptance: VM rows gain the extra QMP statistics and placement correlation
 only when the running QEMU exposes them; unknown stays unknown.
+
+Note: block statistics come from `query-blockstats`, a pure accounting query;
+placement correlation quantifies out-of-nodeset residency (warning above 25%),
+flags hugepage-configured VMs with no runtime hugetlb mappings, and raises the
+exhausted host hugetlb pool; per-node pools are read from sysfs.
 
 ### 0.20.0 — optional Redfish inventory
 

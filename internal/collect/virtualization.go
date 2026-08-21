@@ -109,6 +109,20 @@ func applyVMHeavy(vm *model.VirtualMachine, telemetry vmHeavyTelemetry) {
 	vm.QMPPluggedMemoryBytes = data.pluggedMemory
 	vm.QMPVCPUs = data.vcpus
 	vm.QMPEnabledVCPUs = data.enabledVCPUs
+	for _, stat := range data.blockDevices {
+		vm.QMPBlockReadBytes += stat.readBytes
+		vm.QMPBlockWriteBytes += stat.writeBytes
+		vm.QMPBlockReadOps += stat.readOps
+		vm.QMPBlockWriteOps += stat.writeOps
+		vm.QMPBlockDevices = append(vm.QMPBlockDevices, model.VMBlockStat{
+			Device:     stat.device,
+			NodeName:   stat.nodeName,
+			ReadBytes:  stat.readBytes,
+			WriteBytes: stat.writeBytes,
+			ReadOps:    stat.readOps,
+			WriteOps:   stat.writeOps,
+		})
+	}
 	vm.BalloonEnabled = data.reported
 }
 

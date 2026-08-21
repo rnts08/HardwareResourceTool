@@ -38,13 +38,17 @@ type CPU struct {
 }
 
 type Memory struct {
-	TotalBytes     uint64  `json:"total_bytes"`
-	AvailableBytes uint64  `json:"available_bytes"`
-	UsedPercent    float64 `json:"used_percent"`
-	SwapTotalBytes uint64  `json:"swap_total_bytes"`
-	SwapFreeBytes  uint64  `json:"swap_free_bytes"`
-	SwapInPerSec   int64   `json:"swap_in_per_second"`
-	SwapOutPerSec  int64   `json:"swap_out_per_second"`
+	TotalBytes        uint64  `json:"total_bytes"`
+	AvailableBytes    uint64  `json:"available_bytes"`
+	UsedPercent       float64 `json:"used_percent"`
+	SwapTotalBytes    uint64  `json:"swap_total_bytes"`
+	SwapFreeBytes     uint64  `json:"swap_free_bytes"`
+	SwapInPerSec      int64   `json:"swap_in_per_second"`
+	SwapOutPerSec     int64   `json:"swap_out_per_second"`
+	HugepagesTotal    uint64  `json:"hugepages_total,omitempty"`
+	HugepagesFree     uint64  `json:"hugepages_free,omitempty"`
+	HugepageSizeBytes uint64  `json:"hugepage_size_bytes,omitempty"`
+	HugetlbUsedBytes  uint64  `json:"hugetlb_used_bytes,omitempty"`
 }
 
 type Disk struct {
@@ -272,6 +276,11 @@ type VirtualMachine struct {
 	QMPPluggedMemoryBytes uint64         `json:"qmp_plugged_memory_bytes,omitempty"`
 	QMPVCPUs              int64          `json:"qmp_vcpus,omitempty"`
 	QMPEnabledVCPUs       int64          `json:"qmp_enabled_vcpus,omitempty"`
+	QMPBlockReadBytes     uint64         `json:"qmp_block_read_bytes,omitempty"`
+	QMPBlockWriteBytes    uint64         `json:"qmp_block_write_bytes,omitempty"`
+	QMPBlockReadOps       uint64         `json:"qmp_block_read_ops,omitempty"`
+	QMPBlockWriteOps      uint64         `json:"qmp_block_write_ops,omitempty"`
+	QMPBlockDevices       []VMBlockStat  `json:"qmp_block_devices,omitempty"`
 	RuntimeAnonHugeBytes  uint64         `json:"runtime_anon_huge_bytes,omitempty"`
 	RuntimeHugetlbBytes   uint64         `json:"runtime_hugetlb_bytes,omitempty"`
 	RuntimeNUMABytes      map[int]uint64 `json:"runtime_numa_bytes,omitempty"`
@@ -290,6 +299,15 @@ type VirtualDisk struct {
 	Target string `json:"target,omitempty"`
 	Source string `json:"source,omitempty"`
 	Bus    string `json:"bus,omitempty"`
+}
+
+type VMBlockStat struct {
+	Device     string `json:"device"`
+	NodeName   string `json:"node_name,omitempty"`
+	ReadBytes  uint64 `json:"read_bytes,omitempty"`
+	WriteBytes uint64 `json:"write_bytes,omitempty"`
+	ReadOps    uint64 `json:"read_ops,omitempty"`
+	WriteOps   uint64 `json:"write_ops,omitempty"`
 }
 
 type VirtualNIC struct {
@@ -374,8 +392,16 @@ type PowerSensor struct {
 }
 
 type NUMA struct {
-	Nodes        int   `json:"nodes"`
-	RemoteEvents int64 `json:"remote_events_per_second"`
+	Nodes         int                 `json:"nodes"`
+	RemoteEvents  int64               `json:"remote_events_per_second"`
+	NodeHugepages []NUMANodeHugepages `json:"node_hugepages,omitempty"`
+}
+
+type NUMANodeHugepages struct {
+	Node      int    `json:"node"`
+	SizeBytes uint64 `json:"size_bytes,omitempty"`
+	Total     uint64 `json:"total,omitempty"`
+	Free      uint64 `json:"free,omitempty"`
 }
 
 type SystemSettings struct {

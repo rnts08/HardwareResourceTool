@@ -62,7 +62,10 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   process usage, cgroup usage, balloon values, guest-reported memory, device
   attachments, and physical NIC correlation.
 - Runtime QEMU process memory placement from `smaps_rollup` and `numa_maps`,
-  including anonymous hugepages, hugetlb pages, and per-host-node residency.
+  including anonymous hugepages, hugetlb pages, and per-host-node residency,
+  correlated against the VM's configured NUMA nodeset and the host hugetlb
+  pool (global and per-node free/total counts). Read-only QMP block
+  statistics add cumulative per-device read/write bytes and operations.
 - Read-only QMP QEMU version, memory-size summary, and vCPU state counts when
   the running QEMU exposes those commands.
 - Advisory findings with severity, evidence, and recommendations.
@@ -257,7 +260,7 @@ Inspect the most useful new telemetry with jq:
 jq '.findings' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances,mig_instances,nvlink_version,nvlink_count,nvlink_bandwidth_gbps,nvlinks}' /tmp/hardware-resources-live.XXXXXX/report.json
-jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,qmp_block_read_bytes,qmp_block_write_bytes,qmp_block_devices,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.top_processes' /tmp/hardware-resources-live.XXXXXX/report.json
 ```
 
@@ -303,7 +306,7 @@ and the virtualization platform before applying changes. The tool never runs
 remediation commands such as `sysctl`, `ethtool --set-*`, `numactl`, `virsh`,
 QMP mutating commands, or service restarts.
 
-The current backlog still includes richer read-only QMP statistics, Redfish
-inventory, and broader vendor integration. See
+The current backlog still includes Redfish inventory and broader vendor
+integration. See
 [docs/TECHNICAL_BACKLOG.md](docs/TECHNICAL_BACKLOG.md) and
 [docs/HARDWARE_IMPLEMENTATION.md](docs/HARDWARE_IMPLEMENTATION.md).

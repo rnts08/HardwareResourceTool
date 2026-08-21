@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.19.2 — 2026-08-21
+
+- Fixed the NVML-to-GPU merge dropping the ECC and MIG-mode fields: ECC
+  enabled/corrected/uncorrected counters and MIG enabled/max-instance values
+  were collected from NVML but never copied into the reported GPU entries, so
+  they stayed at zero in JSON, the TUI, and the text report. The merge is now
+  a single tested helper that copies every collected field.
+
 ## 0.19.1 — 2026-08-21
 
 - Fixed QEMU process discovery on Proxmox VE hosts: guests are launched as

@@ -50,33 +50,43 @@ func collectGPUTelemetry(s *model.Snapshot) {
 				continue
 			}
 			matched = true
-			s.GPUs[i].Name = gpu.Name
-			s.GPUs[i].UUID = gpu.UUID
-			s.GPUs[i].MemoryBytes = gpu.MemoryTotal
-			s.GPUs[i].MemoryUsedBytes = gpu.MemoryUsed
-			s.GPUs[i].MemoryProcessBytes = gpu.MemoryProcess
-			s.GPUs[i].MemorySource = "device"
-			if gpu.MemoryProcess > gpu.MemoryUsed && gpu.MemoryProcess <= gpu.MemoryTotal {
-				s.GPUs[i].MemoryUsedBytes = gpu.MemoryProcess
-				s.GPUs[i].MemorySource = "process-accounting"
-			}
-			s.GPUs[i].UtilizationPercent = gpu.Utilization
-			s.GPUs[i].TemperatureCelsius = gpu.Temperature
-			s.GPUs[i].PowerWatts = gpu.PowerWatts
-			s.GPUs[i].MIGInstances = gpu.MIGInstances
-			s.GPUs[i].NvLinks = gpu.NvLinks
-			s.GPUs[i].NvLinkCount = gpu.NvLinkCount
-			if gpu.NvLinkVersion > 0 {
-				s.GPUs[i].NvLinkVersion = fmt.Sprintf("%d.0", gpu.NvLinkVersion)
-				s.GPUs[i].NvLinkBandwidthGBps = nvlinkNominalGBps(gpu.NvLinkVersion)
-			}
-			s.GPUs[i].NVML = true
-			s.GPUs[i].NVMLStatus = "available"
+			applyNVMLToGPU(&s.GPUs[i], gpu)
 		}
 		if !matched && s.GPUs[i].PassedThrough {
 			s.GPUs[i].NVMLStatus = passthroughStatus(s.GPUs[i])
 		}
 	}
+}
+
+// applyNVMLToGPU merges one NVML sample into the PCI-derived GPU entry.
+func applyNVMLToGPU(target *model.GPU, gpu nvmlGPUData) {
+	target.Name = gpu.Name
+	target.UUID = gpu.UUID
+	target.MemoryBytes = gpu.MemoryTotal
+	target.MemoryUsedBytes = gpu.MemoryUsed
+	target.MemoryProcessBytes = gpu.MemoryProcess
+	target.MemorySource = "device"
+	if gpu.MemoryProcess > gpu.MemoryUsed && gpu.MemoryProcess <= gpu.MemoryTotal {
+		target.MemoryUsedBytes = gpu.MemoryProcess
+		target.MemorySource = "process-accounting"
+	}
+	target.UtilizationPercent = gpu.Utilization
+	target.TemperatureCelsius = gpu.Temperature
+	target.PowerWatts = gpu.PowerWatts
+	target.ECCEnabled = gpu.ECCEnabled
+	target.ECCCorrected = gpu.ECCCorrected
+	target.ECCUncorrected = gpu.ECCUncorrected
+	target.MIGEnabled = gpu.MIGEnabled
+	target.MIGMaxInstances = gpu.MIGMaxInstances
+	target.MIGInstances = gpu.MIGInstances
+	target.NvLinks = gpu.NvLinks
+	target.NvLinkCount = gpu.NvLinkCount
+	if gpu.NvLinkVersion > 0 {
+		target.NvLinkVersion = fmt.Sprintf("%d.0", gpu.NvLinkVersion)
+		target.NvLinkBandwidthGBps = nvlinkNominalGBps(gpu.NvLinkVersion)
+	}
+	target.NVML = true
+	target.NVMLStatus = "available"
 }
 
 func markGPUPassthrough(s *model.Snapshot) {

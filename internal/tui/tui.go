@@ -60,6 +60,11 @@ var (
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	warningStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("3"))
 	infoStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+
+	titleStyle     = lipgloss.NewStyle().Bold(true)
+	dimStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	activeTabStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
+	keyStyle       = lipgloss.NewStyle().Bold(true)
 )
 
 // Control markers carried at the start of a plain-text line so the renderer
@@ -69,6 +74,29 @@ const (
 	markWarning  = "\x01w\x02"
 	markInfo     = "\x01i\x02"
 )
+
+// Inline emphasis sentinels survive rune-based horizontal scrolling because
+// they occupy exactly one rune each; the renderer swaps them for ANSI bold
+// after the viewport slice. Emphasized text should include its own visible
+// characters (for example brackets) between the sentinels.
+const (
+	emphStart = '\x03'
+	emphEnd   = '\x04'
+)
+
+// emph marks a string for bold rendering in the scrolled view.
+func emph(text string) string {
+	return string(emphStart) + text + string(emphEnd)
+}
+
+// indicator renders a mode marker such as a sort key: the letter appears bold
+// in brackets when active and plainly spaced otherwise.
+func indicator(active bool, letter string) string {
+	if active {
+		return emph("[" + letter + "]")
+	}
+	return " " + letter + " "
+}
 
 func Run(collector *collect.Collector, interval time.Duration, thresholds analyze.Thresholds) error {
 	if interval < 500*time.Millisecond {
@@ -278,21 +306,19 @@ func (m modelState) View() string {
 		return renderScrolled("", renderHelp(m.thresholds), "", m.width, m.height, 0, 0)
 	}
 	var header strings.Builder
-	header.WriteString("Hardware Resources — live host view\n")
-	header.WriteString("──────────────────────────────────────────────────────────────────────────────\n")
-	for i, tab := range tabs {
-		if i == m.tab {
-			fmt.Fprintf(&header, "[%d %s] ", i+1, tab)
-		} else {
-			fmt.Fprintf(&header, " %d %s  ", i+1, tab)
-		}
+	header.WriteString(titleStyle.Render("Hardware Resources — live host view") + "\n")
+	header.WriteString(dimStyle.Render(strings.Repeat("─", 80)) + "\n")
+	tokens := make([]string, len(tabs))
+	for i := range tabs {
+		tokens[i] = tabToken(i, i == m.tab)
 	}
+	header.WriteString(renderTabBar(tokens, m.tab) + "\n")
 	status := fmt.Sprintf("Samples: %d/%d  Updated: %s  interval %s", len(m.history), historyLimit, updatedAt(m.snapshot), m.interval)
 	if m.collecting {
-		status += "  collecting…"
+		status += "  " + infoStyle.Render("collecting…")
 	}
 	if m.paused {
-		status += "  [paused]"
+		status += "  " + warningStyle.Render("[paused]")
 	}
 	if m.collectTime > 0 {
 		status += fmt.Sprintf("  last collect %s", m.collectTime.Round(time.Millisecond))
@@ -322,11 +348,19 @@ func (m modelState) View() string {
 		footer.WriteString("Collector errors: " + errors + "\n")
 	}
 	if m.detailMode {
-		footer.WriteString("esc: back  j/k scroll  g/G top/bottom")
+		footer.WriteString(hintLine([][2]string{
+			{"esc", "back"}, {"j/k", "scroll"}, {"g/G", "top/bottom"},
+		}))
 	} else if m.pickerMode {
-		footer.WriteString("j/k select  enter open  esc close  d opens this picker from any tab")
+		footer.WriteString(hintLine([][2]string{
+			{"j/k", "select"}, {"enter", "open"}, {"esc", "close"}, {"d", "opens this picker from any tab"},
+		}))
 	} else {
-		footer.WriteString("1-7: tabs  f findings  h/l prev/next  j/k scroll  g/G top/bottom  </> horizontal  d detail  space pause  r refresh  ? help  q quit")
+		footer.WriteString(hintLine([][2]string{
+			{"1-7:", "tabs"}, {"f", "findings"}, {"h/l", "prev/next"}, {"j/k", "scroll"},
+			{"g/G", "top/bottom"}, {"</>", "horizontal"}, {"d", "detail"}, {"space", "pause"},
+			{"r", "refresh"}, {"?", "help"}, {"q", "quit"},
+		}))
 	}
 
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
@@ -384,15 +418,40 @@ func buildPicker(snapshot model.Snapshot) []pickerItem {
 	return items
 }
 
+// tabToken is the plain-text form of one tab bar entry; tabAtX measures these
+// exact strings so click targets stay aligned with the styled rendering.
+func tabToken(i int, active bool) string {
+	if active {
+		return fmt.Sprintf("[%d %s] ", i+1, tabs[i])
+	}
+	return fmt.Sprintf(" %d %s  ", i+1, tabs[i])
+}
+
+func renderTabBar(tokens []string, active int) string {
+	parts := make([]string, len(tokens))
+	for i, token := range tokens {
+		if i == active {
+			parts[i] = activeTabStyle.Render(token)
+		} else {
+			parts[i] = dimStyle.Render(token)
+		}
+	}
+	return strings.Join(parts, "")
+}
+
+// hintLine renders footer key hints with bold keys and dim descriptions.
+func hintLine(pairs [][2]string) string {
+	parts := make([]string, 0, len(pairs))
+	for _, pair := range pairs {
+		parts = append(parts, keyStyle.Render(pair[0])+" "+dimStyle.Render(pair[1]))
+	}
+	return strings.Join(parts, "  ")
+}
+
 func (m modelState) tabAtX(x int) int {
 	column := 0
-	for i, tab := range tabs {
-		var token string
-		if i == m.tab {
-			token = fmt.Sprintf("[%d %s] ", i+1, tab)
-		} else {
-			token = fmt.Sprintf(" %d %s  ", i+1, tab)
-		}
+	for i := range tabs {
+		token := tabToken(i, i == m.tab)
 		if x >= column && x < column+len(token) {
 			return i
 		}
@@ -667,10 +726,13 @@ func renderScrolled(header, content, footer string, width, height, offset, xoffs
 
 	all := append(append(append([]string{}, headerLines...), body...), footerLines...)
 
+	// Horizontal scroll range is driven by the plain-text content lines only;
+	// header and footer are fixed chrome that may already contain ANSI codes.
 	maxLine := 0
-	for _, line := range all {
-		if runes := len([]rune(line)); runes > maxLine {
-			maxLine = runes
+	for _, line := range body {
+		visible := len([]rune(stripEmphasis(line)))
+		if visible > maxLine {
+			maxLine = visible
 		}
 	}
 	maxX := 0
@@ -688,7 +750,15 @@ func renderScrolled(header, content, footer string, width, height, offset, xoffs
 	}
 
 	out := make([]string, 0, len(all))
-	for _, line := range all {
+	for i, line := range all {
+		if i < len(headerLines) || i >= len(headerLines)+len(body) {
+			// Chrome: truncate ANSI-aware, never rune-slice styled text.
+			if width > 0 && lipgloss.Width(line) > width {
+				line = lipgloss.NewStyle().MaxWidth(width).Render(line)
+			}
+			out = append(out, line)
+			continue
+		}
 		scrolled, marker := scrollLine(line, width, xoffset)
 		out = append(out, applyColor(marker, scrolled))
 	}
@@ -700,7 +770,9 @@ func renderScrolled(header, content, footer string, width, height, offset, xoffs
 }
 
 // scrollLine slices a plain-text line horizontally and separates any leading
-// color marker so it survives the slice.
+// color marker so it survives the slice. Inline emphasis sentinels ride along
+// as single runes and are swapped for ANSI codes afterwards; a viewport edge
+// that splits a bold span drops the emphasis for that line.
 func scrollLine(line string, width, xoffset int) (string, string) {
 	marker := ""
 	for _, candidate := range []string{markCritical, markWarning, markInfo} {
@@ -718,13 +790,49 @@ func scrollLine(line string, width, xoffset int) (string, string) {
 			runes = runes[xoffset:]
 		}
 	}
-	if width > 0 && len(runes) > width {
+	mark := ""
+	if width > 0 && len(runes)-countEmphasis(runes) > width {
 		if width <= 1 {
 			return "…", marker
 		}
-		return string(runes[:width-1]) + "…", marker
+		mark = "…"
+		runes = runes[:width-1]
 	}
-	return string(runes), marker
+	return applyEmphasis(balanceEmphasis(string(runes))) + mark, marker
+}
+
+// stripEmphasis removes emphasis sentinels without rendering them.
+func stripEmphasis(line string) string {
+	return strings.Map(func(r rune) rune {
+		if r == emphStart || r == emphEnd {
+			return -1
+		}
+		return r
+	}, line)
+}
+
+func countEmphasis(runes []rune) int {
+	count := 0
+	for _, r := range runes {
+		if r == emphStart || r == emphEnd {
+			count++
+		}
+	}
+	return count
+}
+
+// balanceEmphasis drops unmatched sentinels left by a viewport-edge cut.
+func balanceEmphasis(line string) string {
+	if strings.Count(line, string(emphStart)) == strings.Count(line, string(emphEnd)) {
+		return line
+	}
+	return stripEmphasis(line)
+}
+
+// applyEmphasis swaps remaining sentinels for ANSI bold on/off.
+func applyEmphasis(line string) string {
+	line = strings.ReplaceAll(line, string(emphStart), "\x1b[1m")
+	return strings.ReplaceAll(line, string(emphEnd), "\x1b[0m")
 }
 
 func applyColor(marker, line string) string {
@@ -988,7 +1096,7 @@ func viewThermal(snapshot model.Snapshot) string {
 		return b.String()
 	}
 	for _, zone := range snapshot.Thermal.Zones {
-		fmt.Fprintf(&b, "  %-14s %-18s current %6.1f C  critical %6.1f C  passive %6.1f C  policy %s  mode %s\n", zone.Name, zone.Type, zone.Current, zone.Critical, zone.Passive, zone.Policy, zone.Mode)
+		fmt.Fprintf(&b, "  %-14s %-18s current %s C  critical %6.1f C  passive %6.1f C  policy %s  mode %s\n", zone.Name, zone.Type, emph(fmt.Sprintf("[%6.1f]", zone.Current)), zone.Critical, zone.Passive, zone.Policy, zone.Mode)
 	}
 	if len(snapshot.Thermal.Sensors) > 0 {
 		b.WriteString("\nTemperature sensors\n")
@@ -997,7 +1105,7 @@ func viewThermal(snapshot model.Snapshot) string {
 			if sensor.Alarm {
 				alarm = "  ALARM"
 			}
-			line := fmt.Sprintf("  %-8s %-8s %-20s %-10s current %6.1f C  max %6.1f C  critical %6.1f C%s\n", sensor.Name, sensor.Sensor, sensor.Label, sensor.Source, sensor.Current, sensor.Max, sensor.Critical, alarm)
+			line := fmt.Sprintf("  %-8s %-8s %-20s %-10s current %s C  max %6.1f C  critical %6.1f C%s\n", sensor.Name, sensor.Sensor, sensor.Label, sensor.Source, emph(fmt.Sprintf("[%6.1f]", sensor.Current)), sensor.Max, sensor.Critical, alarm)
 			if sensor.Alarm || (sensor.Critical > 0 && sensor.Current >= sensor.Critical*0.9) {
 				line = markWarning + line
 			}
@@ -1007,7 +1115,7 @@ func viewThermal(snapshot model.Snapshot) string {
 	if len(snapshot.Thermal.Fans) > 0 {
 		b.WriteString("\nFans\n")
 		for _, fan := range snapshot.Thermal.Fans {
-			line := fmt.Sprintf("  %-8s %-8s %-20s %6d RPM  min %d  max %d\n", fan.Name, fan.Sensor, fan.Label, fan.Input, fan.Min, fan.Max)
+			line := fmt.Sprintf("  %-8s %-8s %-20s %s RPM  min %d  max %d\n", fan.Name, fan.Sensor, fan.Label, emph(fmt.Sprintf("[%6d]", fan.Input)), fan.Min, fan.Max)
 			if fan.Input == 0 && (fan.Min > 0 || fan.Max > 0) {
 				line = markWarning + line
 			}
@@ -1018,7 +1126,7 @@ func viewThermal(snapshot model.Snapshot) string {
 		b.WriteString("\nPower / energy\n")
 		for _, power := range snapshot.Thermal.Power {
 			if power.InputWatts > 0 {
-				line := fmt.Sprintf("  %-8s %-8s %-20s %8.1f W  cap %6.1f W  cap-max %6.1f W\n", power.Name, power.Sensor, power.Label, power.InputWatts, power.CapWatts, power.CapMaxWatts)
+				line := fmt.Sprintf("  %-8s %-8s %-20s %s W  cap %6.1f W  cap-max %6.1f W\n", power.Name, power.Sensor, power.Label, emph(fmt.Sprintf("[%8.1f]", power.InputWatts)), power.CapWatts, power.CapMaxWatts)
 				if power.Alarm {
 					line = markWarning + line
 				}

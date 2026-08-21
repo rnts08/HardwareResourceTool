@@ -23,7 +23,7 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 }
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
-	view := (modelState{tab: 1, thresholds: analyze.DefaultThresholds}).View()
+	view := stripANSI((modelState{tab: 1, thresholds: analyze.DefaultThresholds}).View())
 	for _, expected := range []string{"[2 Top]", "No process samples available.", "1-7: tabs"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
@@ -32,7 +32,7 @@ func TestViewShowsTabsAndEmptyState(t *testing.T) {
 }
 
 func TestFindingsShortcutShowsFindings(t *testing.T) {
-	view := (modelState{findingsMode: true, thresholds: analyze.DefaultThresholds}).View()
+	view := stripANSI((modelState{findingsMode: true, thresholds: analyze.DefaultThresholds}).View())
 	for _, expected := range []string{"No findings.", "f findings"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
@@ -41,12 +41,35 @@ func TestFindingsShortcutShowsFindings(t *testing.T) {
 }
 
 func TestViewShowsThermalTabAndEmptyState(t *testing.T) {
-	view := (modelState{tab: 6, thresholds: analyze.DefaultThresholds}).View()
+	view := stripANSI((modelState{tab: 6, thresholds: analyze.DefaultThresholds}).View())
 	for _, expected := range []string{"[7 Thermal]", "No thermal sensors reported."} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
 	}
+}
+
+// stripANSI removes SGR sequences and inline emphasis sentinels so tests can
+// assert on visible text.
+func stripANSI(s string) string {
+	var b strings.Builder
+	inEscape := false
+	for _, r := range s {
+		if inEscape {
+			if r == 'm' {
+				inEscape = false
+			}
+			continue
+		}
+		switch r {
+		case '\x1b':
+			inEscape = true
+		case '\x03', '\x04':
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func TestKernelEventDeltas(t *testing.T) {
@@ -150,8 +173,8 @@ func TestTabAtXMapsTabs(t *testing.T) {
 
 func TestViewThermalShowsPowerAndEnergy(t *testing.T) {
 	snapshot := model.Snapshot{Thermal: model.Thermal{Power: []model.PowerSensor{{Name: "hwmon0", Sensor: "1", Label: "CPU package", InputWatts: 45, CapWatts: 125}, {Name: "hwmon0", Sensor: "1", InputJoules: 123.45}}}}
-	view := viewThermal(snapshot)
-	for _, expected := range []string{"Power / energy", "45.0 W", "cap  125.0 W", "123.5 J"} {
+	view := stripANSI(viewThermal(snapshot))
+	for _, expected := range []string{"Power / energy", "[    45.0] W", "cap  125.0 W", "123.5 J"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -270,5 +293,47 @@ func TestRenderScrolledPadsShortContentToFullHeight(t *testing.T) {
 func TestTabCountMatchesTabs(t *testing.T) {
 	if len(tabs) != tabCount {
 		t.Fatalf("tabs has %d entries but tabCount is %d", len(tabs), tabCount)
+	}
+}
+
+func TestIndicatorMarksActiveMode(t *testing.T) {
+	if got := stripANSI(indicator(true, "C")); got != "[C]" {
+		t.Fatalf("active indicator = %q", got)
+	}
+	if got := stripANSI(indicator(false, "C")); got != " C " {
+		t.Fatalf("inactive indicator = %q", got)
+	}
+}
+
+func TestScrollLinePreservesEmphasis(t *testing.T) {
+	line := "temp " + emph("[61.0]") + " ok"
+	scrolled, _ := scrollLine(line, 80, 0)
+	if !strings.Contains(scrolled, "\x1b[1m[61.0]\x1b[0m") {
+		t.Fatalf("emphasis lost without scrolling: %q", scrolled)
+	}
+	// Scrolling to the exact start of the emphasized span keeps it intact.
+	scrolled, _ = scrollLine(line, 80, 5)
+	if !strings.Contains(stripANSI(scrolled), "[61.0]") {
+		t.Fatalf("emphasis content lost when scrolled: %q", scrolled)
+	}
+}
+
+func TestScrollLineDropsSplitEmphasis(t *testing.T) {
+	line := strings.Repeat("x", 10) + emph("[61.0]") + " tail"
+	// Cut lands inside the bold span; the sentinel pair is unbalanced and
+	// must be dropped instead of leaking control runes.
+	scrolled, _ := scrollLine(line, 14, 0)
+	if strings.ContainsAny(scrolled, "\x03\x04") {
+		t.Fatalf("unbalanced sentinels leaked: %q", scrolled)
+	}
+}
+
+func TestThermalValuesAreBracketed(t *testing.T) {
+	snapshot := model.Snapshot{Thermal: model.Thermal{
+		Zones: []model.ThermalZone{{Name: "acpitz", Type: "critical", Current: 45.5, Critical: 100}},
+	}}
+	view := viewThermal(snapshot)
+	if !strings.Contains(view, emph("[  45.5]")) {
+		t.Fatalf("zone current not bracketed+emphasized: %q", view)
 	}
 }

@@ -165,9 +165,11 @@ field-by-field detail pane; f toggles the findings view; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
 help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
-warning, info). Each window keeps its own scroll position while you switch
-between them, and every window occupies the full terminal height from the
-first frame.
+warning, info). The active tab is highlighted in the header, footer keys are
+bold with dim descriptions, and live readings such as temperatures, fan
+speeds, and power draw are shown as bold values in brackets. Each window keeps
+its own scroll position while you switch between them, and every window
+occupies the full terminal height from the first frame.
 
 ### CPU/Memory
 

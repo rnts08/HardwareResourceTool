@@ -23,8 +23,17 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 }
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
-	view := (modelState{tab: 3, thresholds: analyze.DefaultThresholds}).View()
-	for _, expected := range []string{"[4 Findings]", "No findings.", "1-7: tabs"} {
+	view := (modelState{tab: 1, thresholds: analyze.DefaultThresholds}).View()
+	for _, expected := range []string{"[2 Top]", "No process samples available.", "1-7: tabs"} {
+		if !contains(view, expected) {
+			t.Fatalf("view missing %q: %s", expected, view)
+		}
+	}
+}
+
+func TestFindingsShortcutShowsFindings(t *testing.T) {
+	view := (modelState{findingsMode: true, thresholds: analyze.DefaultThresholds}).View()
+	for _, expected := range []string{"No findings.", "f findings"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -32,8 +41,8 @@ func TestViewShowsTabsAndEmptyState(t *testing.T) {
 }
 
 func TestViewShowsThermalTabAndEmptyState(t *testing.T) {
-	view := (modelState{tab: 5, thresholds: analyze.DefaultThresholds}).View()
-	for _, expected := range []string{"[6 Thermal]", "No thermal sensors reported."} {
+	view := (modelState{tab: 6, thresholds: analyze.DefaultThresholds}).View()
+	for _, expected := range []string{"[7 Thermal]", "No thermal sensors reported."} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -230,5 +239,36 @@ func TestMarkerSurvivesHorizontalScroll(t *testing.T) {
 	scrolled, marker := scrollLine(markCritical+"abcdef", 0, 3)
 	if scrolled != "def" || marker != markCritical {
 		t.Fatalf("marker did not survive scroll: text=%q marker=%q", scrolled, marker)
+	}
+}
+
+func TestSwitchToPreservesScrollPositions(t *testing.T) {
+	m := modelState{tab: 0, offset: 12, xoffset: 8}
+	m.switchTo(3)
+	if m.tab != 3 || m.offset != 0 || m.xoffset != 0 {
+		t.Fatalf("unexpected switch state: tab %d offset %d xoffset %d", m.tab, m.offset, m.xoffset)
+	}
+	m.offset = 44
+	m.switchTo(0)
+	if m.tab != 0 || m.offset != 12 || m.xoffset != 8 {
+		t.Fatalf("scroll position not restored: %#v", m)
+	}
+	m.switchTo(3)
+	if m.offset != 44 {
+		t.Fatalf("scroll position not remembered for target tab: %d", m.offset)
+	}
+}
+
+func TestRenderScrolledPadsShortContentToFullHeight(t *testing.T) {
+	view := renderScrolled("header\n", "one line", "footer", 80, 10, 0, 0)
+	lines := strings.Split(view, "\n")
+	if len(lines) != 10 {
+		t.Fatalf("expected 10 lines for a 10-row terminal, got %d", len(lines))
+	}
+}
+
+func TestTabCountMatchesTabs(t *testing.T) {
+	if len(tabs) != tabCount {
+		t.Fatalf("tabs has %d entries but tabCount is %d", len(tabs), tabCount)
 	}
 }

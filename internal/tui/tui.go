@@ -17,28 +17,31 @@ const historyLimit = 60
 type tickMsg time.Time
 
 type modelState struct {
-	collector   *collect.Collector
-	interval    time.Duration
-	thresholds  analyze.Thresholds
-	snapshot    model.Snapshot
-	history     []model.Snapshot
-	findings    []model.Finding
-	err         error
-	tab         int
-	width       int
-	height      int
-	offset      int
-	xoffset     int
-	collecting  bool
-	paused      bool
-	showHelp    bool
-	collectTime time.Duration
-	pickerMode  bool
-	detailMode  bool
-	pickerItems []pickerItem
-	pickerSel   int
-	detailTitle string
-	detailLines []string
+	collector    *collect.Collector
+	interval     time.Duration
+	thresholds   analyze.Thresholds
+	snapshot     model.Snapshot
+	history      []model.Snapshot
+	findings     []model.Finding
+	err          error
+	tab          int
+	width        int
+	height       int
+	offset       int
+	xoffset      int
+	offsets      [tabCount]int
+	xoffsets     [tabCount]int
+	collecting   bool
+	paused       bool
+	showHelp     bool
+	findingsMode bool
+	collectTime  time.Duration
+	pickerMode   bool
+	detailMode   bool
+	pickerItems  []pickerItem
+	pickerSel    int
+	detailTitle  string
+	detailLines  []string
 }
 
 type pickerItem struct {
@@ -47,7 +50,11 @@ type pickerItem struct {
 	label string
 }
 
-var tabs = []string{"Overview", "Storage", "Network", "Findings", "Hardware", "Thermal", "Top"}
+// Tab order: Overview / Top / CPU-Memory / Hardware / Storage / Network /
+// Thermal. Findings is available through the f shortcut instead of a tab.
+const tabCount = 7
+
+var tabs = []string{"Overview", "Top", "CPU/Memory", "Hardware", "Storage", "Network", "Thermal"}
 
 var (
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -68,8 +75,23 @@ func Run(collector *collect.Collector, interval time.Duration, thresholds analyz
 		interval = 500 * time.Millisecond
 	}
 	m := modelState{collector: collector, interval: interval, thresholds: thresholds, collecting: true}
-	_, err := tea.NewProgram(m, tea.WithMouseCellMotion()).Run()
+	// The alternate screen gives every view the full window height from the
+	// first frame instead of growing inline with the tallest tab.
+	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	return err
+}
+
+// switchTo changes tabs while preserving each tab's scroll position.
+func (m *modelState) switchTo(tab int) {
+	if tab < 0 || tab >= len(tabs) {
+		return
+	}
+	m.offsets[m.tab] = m.offset
+	m.xoffsets[m.tab] = m.xoffset
+	m.tab = tab
+	m.findingsMode = false
+	m.offset = m.offsets[tab]
+	m.xoffset = m.xoffsets[tab]
 }
 
 func (m modelState) Init() tea.Cmd { return tea.Batch(collectNow(m.collector), tick(m.interval)) }
@@ -85,6 +107,10 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.detailMode = false
 			} else if m.pickerMode {
 				m.pickerMode = false
+			} else if m.showHelp {
+				m.showHelp = false
+			} else if m.findingsMode {
+				m.findingsMode = false
 			}
 			return m, nil
 		case "enter":
@@ -93,17 +119,30 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case "1", "2", "3", "4", "5", "6", "7":
-			if m.pickerMode || m.detailMode {
+			if m.pickerMode || m.detailMode || m.showHelp {
 				return m, nil
 			}
-			m.tab = int(msg.String()[0] - '1')
-			m.offset, m.xoffset = 0, 0
+			m.switchTo(int(msg.String()[0] - '1'))
 		case "d":
-			if m.tab == 4 && !m.pickerMode && !m.detailMode {
+			if !m.pickerMode && !m.detailMode && !m.showHelp {
 				m.pickerMode = true
+				m.findingsMode = false
 				m.pickerItems = buildPicker(m.snapshot)
 				m.pickerSel = 0
 				m.offset, m.xoffset = 0, 0
+			}
+		case "f":
+			if !m.pickerMode && !m.detailMode && !m.showHelp {
+				m.findingsMode = !m.findingsMode
+				m.offset, m.xoffset = 0, 0
+			}
+		case "g":
+			if !m.pickerMode {
+				m.offset = 0
+			}
+		case "G":
+			if !m.pickerMode {
+				m.offset = 1 << 24
 			}
 		case "j", "down":
 			if m.pickerMode {
@@ -132,17 +171,15 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.offset = 0
 			}
 		case "tab", "right", "l":
-			if m.pickerMode || m.detailMode {
+			if m.pickerMode || m.detailMode || m.showHelp {
 				return m, nil
 			}
-			m.tab = (m.tab + 1) % len(tabs)
-			m.offset, m.xoffset = 0, 0
+			m.switchTo((m.tab + 1) % len(tabs))
 		case "shift+tab", "left", "h":
-			if m.pickerMode || m.detailMode {
+			if m.pickerMode || m.detailMode || m.showHelp {
 				return m, nil
 			}
-			m.tab = (m.tab + len(tabs) - 1) % len(tabs)
-			m.offset, m.xoffset = 0, 0
+			m.switchTo((m.tab + len(tabs) - 1) % len(tabs))
 		case "?":
 			m.showHelp = !m.showHelp
 		case " ":
@@ -178,8 +215,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseLeft:
 			if !m.showHelp && !m.pickerMode && !m.detailMode && msg.Y == 2 {
 				if tab := m.tabAtX(msg.X); tab >= 0 {
-					m.tab = tab
-					m.offset, m.xoffset = 0, 0
+					m.switchTo(tab)
 				}
 			}
 		}
@@ -264,6 +300,9 @@ func (m modelState) View() string {
 	header.WriteString("\n" + status + "\n\n")
 
 	content := m.tabContent()
+	if m.findingsMode {
+		content = viewFindings(m.findings)
+	}
 	if m.pickerMode {
 		content = m.pickerContent()
 	}
@@ -283,11 +322,11 @@ func (m modelState) View() string {
 		footer.WriteString("Collector errors: " + errors + "\n")
 	}
 	if m.detailMode {
-		footer.WriteString("esc: back to picker  j/k scroll")
+		footer.WriteString("esc: back  j/k scroll  g/G top/bottom")
 	} else if m.pickerMode {
-		footer.WriteString("j/k select  enter open  esc close  d on Hardware opens this picker")
+		footer.WriteString("j/k select  enter open  esc close  d opens this picker from any tab")
 	} else {
-		footer.WriteString("1-7: tabs  h/l prev/next  j/k scroll  </> horizontal  d detail  space pause  ? help  q quit")
+		footer.WriteString("1-7: tabs  f findings  h/l prev/next  j/k scroll  g/G top/bottom  </> horizontal  d detail  space pause  r refresh  ? help  q quit")
 	}
 
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
@@ -300,7 +339,7 @@ func (m modelState) openDetail() {
 	item := m.pickerItems[m.pickerSel]
 	title, lines := detailFor(m.snapshot, item)
 	if len(lines) == 0 {
-		return
+		title, lines = "No detail available", []string{"  " + item.label}
 	}
 	m.detailTitle, m.detailLines = title, lines
 	m.detailMode = true
@@ -572,17 +611,17 @@ func pciBARSummarySuffix(device model.PCIDevice) string {
 func (m modelState) tabContent() string {
 	switch m.tab {
 	case 1:
-		return viewStorage(m.snapshot)
-	case 2:
-		return viewNetwork(m.snapshot)
-	case 3:
-		return viewFindings(m.findings)
-	case 4:
-		return viewHardware(m.snapshot)
-	case 5:
-		return viewThermal(m.snapshot)
-	case 6:
 		return viewTop(m.snapshot)
+	case 2:
+		return viewCPUMemory(m.snapshot, m.history, m.thresholds)
+	case 3:
+		return viewHardware(m.snapshot)
+	case 4:
+		return viewStorage(m.snapshot)
+	case 5:
+		return viewNetwork(m.snapshot)
+	case 6:
+		return viewThermal(m.snapshot)
 	default:
 		return viewOverview(m.snapshot, m.history, m.thresholds)
 	}
@@ -618,6 +657,11 @@ func renderScrolled(header, content, footer string, width, height, offset, xoffs
 			body = contentLines[offset:end]
 		} else {
 			body = contentLines
+		}
+		// Pad short views so every tab occupies the full window height from
+		// the first frame instead of resizing as tabs change.
+		for len(body) < avail {
+			body = append(body, "")
 		}
 	}
 
@@ -708,12 +752,14 @@ func renderHelp(thresholds analyze.Thresholds) string {
 	return strings.Join([]string{
 		"Help",
 		"",
-		"  1-7 or h/l/tab     switch tabs (Overview, Storage, Network, Findings, Hardware, Thermal, Top)",
-		"  j/k, PgUp/PgDn     scroll the active tab vertically",
-		"  </>, shift+arrows  scroll the active tab horizontally",
-		"  d                  on Hardware: pick a VM/GPU/PCI/DIMM to expand",
+		"  1-7 or h/l/tab     switch tabs (Overview, Top, CPU/Memory, Hardware, Storage, Network, Thermal)",
+		"  f                  toggle the findings view",
+		"  j/k, PgUp/PgDn     scroll the active view vertically",
+		"  g / G              jump to the top / bottom of the active view",
+		"  </>, shift+arrows  scroll the active view horizontally",
+		"  d                  pick a VM/GPU/PCI/DIMM to expand (works on every tab)",
 		"  enter              open the selected item's detail pane",
-		"  esc                close the detail pane or the picker",
+		"  esc                close detail pane, picker, findings, or help",
 		"  space              pause/resume live collection",
 		"  r                  force a refresh now",
 		"  ?                  toggle this help",
@@ -769,6 +815,47 @@ func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds 
 	}
 	if len(history) < 2 && snapshot.CPU.UserPercent == 0 && snapshot.CPU.SystemPercent == 0 && snapshot.CPU.IdlePercent == 0 {
 		b.WriteString("  Rates appear after the second sample; keep the dashboard running or press r to refresh.\n")
+	}
+	return b.String()
+}
+
+// viewCPUMemory renders the dedicated CPU and memory detail tab.
+func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds analyze.Thresholds) string {
+	var b strings.Builder
+	b.WriteString("CPU\n")
+	fmt.Fprintf(&b, "  logical CPUs     %d\n", snapshot.CPU.LogicalCPUs)
+	fmt.Fprintf(&b, "  utilization      user %5.1f%%  system %5.1f%%  iowait %5.1f%%  idle %5.1f%%\n", snapshot.CPU.UserPercent, snapshot.CPU.SystemPercent, snapshot.CPU.IOWaitPercent, snapshot.CPU.IdlePercent)
+	fmt.Fprintf(&b, "  idle history     %s\n", sparkline(historyValues(history, func(s model.Snapshot) float64 { return s.CPU.IdlePercent }), 0, 100))
+	fmt.Fprintf(&b, "  load average     %.2f %.2f %.2f\n", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15)
+	fmt.Fprintf(&b, "  events           context switches %d/s  interrupts %d/s\n", snapshot.CPU.ContextSwitch, snapshot.CPU.Interrupts)
+	if snapshot.System.CPUGovernor != "" {
+		fmt.Fprintf(&b, "  governor         %s\n", snapshot.System.CPUGovernor)
+	}
+	b.WriteString("\nMemory\n")
+	fmt.Fprintf(&b, "  total            %s\n", formatBytes(snapshot.Memory.TotalBytes))
+	fmt.Fprintf(&b, "  available        %s (%.1f%% used)\n", formatBytes(snapshot.Memory.AvailableBytes), snapshot.Memory.UsedPercent)
+	fmt.Fprintf(&b, "  used history     %s\n", sparkline(historyValues(history, func(s model.Snapshot) float64 { return s.Memory.UsedPercent }), 0, 100))
+	if snapshot.Memory.SwapTotalBytes > 0 {
+		fmt.Fprintf(&b, "  swap             %s free of %s  in/out %d/%d per sec\n", formatBytes(snapshot.Memory.SwapFreeBytes), formatBytes(snapshot.Memory.SwapTotalBytes), snapshot.Memory.SwapInPerSec, snapshot.Memory.SwapOutPerSec)
+	} else {
+		b.WriteString("  swap             none configured\n")
+	}
+	if snapshot.Memory.HugepagesTotal > 0 {
+		fmt.Fprintf(&b, "  hugetlb pool     %d/%d free x %s (reserved %s)\n", snapshot.Memory.HugepagesFree, snapshot.Memory.HugepagesTotal, formatBytes(snapshot.Memory.HugepageSizeBytes), formatBytes(snapshot.Memory.HugetlbUsedBytes))
+	}
+	for _, node := range snapshot.NUMA.NodeHugepages {
+		fmt.Fprintf(&b, "  node%d hugetlb    %d/%d free x %s\n", node.Node, node.Free, node.Total, formatBytes(node.SizeBytes))
+	}
+	if snapshot.NUMA.Nodes > 0 {
+		fmt.Fprintf(&b, "  NUMA             %d nodes  remote %d/s\n", snapshot.NUMA.Nodes, snapshot.NUMA.RemoteEvents)
+	}
+	if snapshot.System.THP != "" {
+		fmt.Fprintf(&b, "  THP              %s\n", snapshot.System.THP)
+	}
+	fmt.Fprintf(&b, "  swappiness       %d\n", snapshot.System.Swappiness)
+	fmt.Fprintf(&b, "  limits           open files %d  processes %d  locked %s  stack %s\n", snapshot.System.OpenFiles, snapshot.System.MaxProcesses, formatBytes(snapshot.System.MaxLocked), formatBytes(snapshot.System.MaxStack))
+	if snapshot.Memory.TotalBytes > 0 && snapshot.Memory.UsedPercent > thresholds.MemoryUsedCritical {
+		b.WriteString("  [critical] memory usage is above the configured threshold\n")
 	}
 	return b.String()
 }

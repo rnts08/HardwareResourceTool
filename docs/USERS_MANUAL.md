@@ -155,15 +155,29 @@ and UTC build time. It does not require root.
 
 ## 4. TUI windows and controls
 
-The seven windows are Overview, Storage, Network, Findings, Hardware,
-Thermal, and Top. Select them with 1–7. Tab, Right arrow, and l move forward.
-Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down scroll the
-active window vertically; < and > or Shift+arrows scroll it horizontally;
-d on Hardware opens a picker of VMs, GPUs, PCI devices, and DIMMs where j/k
-select and Enter expands a field-by-field detail pane; Esc closes the pane or
-picker; clicking a tab header row switches views; Space pauses and resumes
-collection; r forces an immediate refresh; ? shows help; and q or Ctrl+C
-exits. Findings are color-coded by severity (critical, warning, info).
+The seven windows are Overview, Top, CPU/Memory, Hardware, Storage, Network,
+and Thermal, in that order. Select them with 1–7. Tab, Right arrow, and l
+move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
+scroll the active window vertically; g and G jump to the top and bottom; < and
+> or Shift+arrows scroll it horizontally; d opens a picker of VMs, GPUs, PCI
+devices, and DIMMs from any window where j/k select and Enter expands a
+field-by-field detail pane; f toggles the findings view; Esc closes the pane,
+picker, findings view, or help; clicking a tab header row switches views;
+Space pauses and resumes collection; r forces an immediate refresh; ? shows
+help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
+warning, info). Each window keeps its own scroll position while you switch
+between them, and every window occupies the full terminal height from the
+first frame.
+
+### CPU/Memory
+
+CPU/Memory expands the overview numbers into a dedicated window: logical CPU
+count, utilization breakdown with idle history sparkline, load averages,
+context switches and interrupts per second, the active cpufreq governor, and
+the full memory picture — total and available bytes with a used-history
+sparkline, swap configuration and activity, the host hugetlb pool and
+per-NUMA-node pools, NUMA node count with remote events, transparent huge
+page policy, swappiness, and process limits.
 
 ### Overview
 

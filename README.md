@@ -306,7 +306,15 @@ and the virtualization platform before applying changes. The tool never runs
 remediation commands such as `sysctl`, `ethtool --set-*`, `numactl`, `virsh`,
 QMP mutating commands, or service restarts.
 
-The current backlog still includes Redfish inventory and broader vendor
-integration. See
-[docs/TECHNICAL_BACKLOG.md](docs/TECHNICAL_BACKLOG.md) and
-[docs/HARDWARE_IMPLEMENTATION.md](docs/HARDWARE_IMPLEMENTATION.md).
+## Support and Donations
+Support the project and other projects like this by supporting the creator, feel free to reach out for other ways to contribute. 
+
+- EVM: `0x6e8e3c2b31424266e7cff59e910df1587c317427` (ERC-20, BEP-20, TRC-20, AVAX-C, SPL, MATIC, POL, ARB, BASE, TON)
+- BTC: `bc1qzzvcguvqjc6qhwe2y5vy38w2zke7hksukjhm68`
+- LTC: `MPfm5QLKH1r9XxgWmH75Gyps4LDfX5c53L`
+- SOL: `GEaCMpnyM8tB5BU4RMuLm6tgMr3q9FgMHodxDxxAGby`
+- DOGE: `DPkJheSBTTkFv9oxnEwGsfvrcCvEWDVhVY`
+
+All donated support goes directly back into development. 
+
+Connect via discord, telegram or github for other donations and support options.

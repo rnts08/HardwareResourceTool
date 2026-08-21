@@ -179,27 +179,54 @@ type PCIBar struct {
 }
 
 type GPU struct {
-	Address            string  `json:"address"`
-	VendorID           string  `json:"vendor_id"`
-	DeviceID           string  `json:"device_id"`
+	Address             string        `json:"address"`
+	VendorID            string        `json:"vendor_id"`
+	DeviceID            string        `json:"device_id"`
+	Name                string        `json:"name,omitempty"`
+	UUID                string        `json:"uuid,omitempty"`
+	MemoryBytes         uint64        `json:"memory_bytes,omitempty"`
+	UtilizationPercent  float64       `json:"utilization_percent,omitempty"`
+	TemperatureCelsius  float64       `json:"temperature_celsius,omitempty"`
+	PowerWatts          float64       `json:"power_watts,omitempty"`
+	MemoryUsedBytes     uint64        `json:"memory_used_bytes,omitempty"`
+	MemoryProcessBytes  uint64        `json:"memory_process_bytes,omitempty"`
+	MemorySource        string        `json:"memory_source,omitempty"`
+	PassedThrough       bool          `json:"passed_through"`
+	PassedThroughVM     string        `json:"passed_through_vm,omitempty"`
+	ECCEnabled          bool          `json:"ecc_enabled,omitempty"`
+	ECCCorrected        uint64        `json:"ecc_corrected,omitempty"`
+	ECCUncorrected      uint64        `json:"ecc_uncorrected,omitempty"`
+	MIGEnabled          bool          `json:"mig_enabled,omitempty"`
+	MIGMaxInstances     uint64        `json:"mig_max_instances,omitempty"`
+	MIGInstances        []MIGInstance `json:"mig_instances,omitempty"`
+	NvLinkVersion       string        `json:"nvlink_version,omitempty"`
+	NvLinkCount         int           `json:"nvlink_count,omitempty"`
+	NvLinkBandwidthGBps int64         `json:"nvlink_bandwidth_gbps,omitempty"`
+	NvLinks             []NvLink      `json:"nvlinks,omitempty"`
+	NVMLStatus          string        `json:"nvml_status,omitempty"`
+	NVML                bool          `json:"nvml_available"`
+}
+
+type MIGInstance struct {
+	Index              int     `json:"index"`
+	GPUInstanceID      int     `json:"gpu_instance_id,omitempty"`
+	Profile            string  `json:"profile,omitempty"`
 	Name               string  `json:"name,omitempty"`
-	UUID               string  `json:"uuid,omitempty"`
 	MemoryBytes        uint64  `json:"memory_bytes,omitempty"`
+	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
 	UtilizationPercent float64 `json:"utilization_percent,omitempty"`
 	TemperatureCelsius float64 `json:"temperature_celsius,omitempty"`
 	PowerWatts         float64 `json:"power_watts,omitempty"`
-	MemoryUsedBytes    uint64  `json:"memory_used_bytes,omitempty"`
-	MemoryProcessBytes uint64  `json:"memory_process_bytes,omitempty"`
-	MemorySource       string  `json:"memory_source,omitempty"`
-	PassedThrough      bool    `json:"passed_through"`
-	PassedThroughVM    string  `json:"passed_through_vm,omitempty"`
-	ECCEnabled         bool    `json:"ecc_enabled,omitempty"`
-	ECCCorrected       uint64  `json:"ecc_corrected,omitempty"`
-	ECCUncorrected     uint64  `json:"ecc_uncorrected,omitempty"`
-	MIGEnabled         bool    `json:"mig_enabled,omitempty"`
-	MIGMaxInstances    uint64  `json:"mig_max_instances,omitempty"`
-	NVMLStatus         string  `json:"nvml_status,omitempty"`
-	NVML               bool    `json:"nvml_available"`
+	ProcessMemoryBytes uint64  `json:"process_memory_bytes,omitempty"`
+}
+
+type NvLink struct {
+	Index        int    `json:"index"`
+	Active       bool   `json:"active,omitempty"`
+	RemoteDevice string `json:"remote_device,omitempty"`
+	RemotePCI    string `json:"remote_pci,omitempty"`
+	ReadBytes    uint64 `json:"read_bytes,omitempty"`
+	WriteBytes   uint64 `json:"write_bytes,omitempty"`
 }
 
 type Virtualization struct {

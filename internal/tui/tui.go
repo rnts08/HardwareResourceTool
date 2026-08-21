@@ -471,6 +471,27 @@ func gpuDetail(gpu model.GPU) (string, []string) {
 		fmt.Sprintf("  ECC              enabled=%t corrected=%d uncorrected=%d", gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected),
 		fmt.Sprintf("  MIG              enabled=%t max instances=%d", gpu.MIGEnabled, gpu.MIGMaxInstances),
 	}
+	if len(gpu.MIGInstances) > 0 {
+		for _, mig := range gpu.MIGInstances {
+			lines = append(lines, fmt.Sprintf("  MIG instance %d   profile %s  gi %d  mem %s / %s (proc %s)  util %.1f%%  temp %.1f C  power %.1f W",
+				mig.Index, mig.Profile, mig.GPUInstanceID, formatBytes(mig.MemoryUsedBytes), formatBytes(mig.MemoryBytes), formatBytes(mig.ProcessMemoryBytes),
+				mig.UtilizationPercent, mig.TemperatureCelsius, mig.PowerWatts))
+		}
+	}
+	if gpu.NvLinkCount > 0 {
+		lines = append(lines, fmt.Sprintf("  NVLink           version %s  links %d  nominal %d GB/s per link", gpu.NvLinkVersion, gpu.NvLinkCount, gpu.NvLinkBandwidthGBps))
+		for _, link := range gpu.NvLinks {
+			state := "inactive"
+			if link.Active {
+				state = "active"
+			}
+			remote := link.RemotePCI
+			if remote == "" {
+				remote = "n/a"
+			}
+			lines = append(lines, fmt.Sprintf("  NVLink %d         %s -> %s (%s)  read %s  write %s", link.Index, state, remote, link.RemoteDevice, formatBytes(link.ReadBytes), formatBytes(link.WriteBytes)))
+		}
+	}
 	if gpu.PassedThrough {
 		lines = append(lines, fmt.Sprintf("  passthrough      %s", gpu.PassedThroughVM))
 	}
@@ -828,6 +849,14 @@ func viewHardware(snapshot model.Snapshot) string {
 			fmt.Fprintf(&b, "  %-16s %s:%s %s PASSED THROUGH (%s); host NVML unavailable\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, gpu.NVMLStatus)
 		} else if gpu.NVML {
 			fmt.Fprintf(&b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
+			if len(gpu.MIGInstances) > 0 {
+				for _, mig := range gpu.MIGInstances {
+					fmt.Fprintf(&b, "    MIG instance %d profile %s gi %d mem %.1f/%.1f GiB util %.1f%%\n", mig.Index, mig.Profile, mig.GPUInstanceID, float64(mig.MemoryUsedBytes)/(1024*1024*1024), float64(mig.MemoryBytes)/(1024*1024*1024), mig.UtilizationPercent)
+				}
+			}
+			if gpu.NvLinkCount > 0 {
+				fmt.Fprintf(&b, "    NVLink version %s links %d nominal %d GB/s per link\n", gpu.NvLinkVersion, gpu.NvLinkCount, gpu.NvLinkBandwidthGBps)
+			}
 		} else {
 			fmt.Fprintf(&b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
 		}

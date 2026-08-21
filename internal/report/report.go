@@ -107,6 +107,19 @@ func WriteText(w io.Writer, result model.Report) error {
 			fmt.Fprintf(w, "GPU: %s %s passed through (%s); host NVML telemetry unavailable\n", gpu.Address, gpu.Name, gpu.NVMLStatus)
 		} else if gpu.NVML {
 			fmt.Fprintf(w, "GPU: %s %s NVML available memory %.1f/%.1f GiB (%s; process %.1f GiB) util %.1f%% temp %.1fC power %.1fW ECC %t %d/%d MIG %t max-instances %d\n", gpu.Address, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
+			for _, mig := range gpu.MIGInstances {
+				fmt.Fprintf(w, "  MIG instance %d: profile %s gi %d memory %.1f/%.1f GiB (process %.1f GiB) util %.1f%% temp %.1fC power %.1fW\n", mig.Index, mig.Profile, mig.GPUInstanceID, float64(mig.MemoryUsedBytes)/(1024*1024*1024), float64(mig.MemoryBytes)/(1024*1024*1024), float64(mig.ProcessMemoryBytes)/(1024*1024*1024), mig.UtilizationPercent, mig.TemperatureCelsius, mig.PowerWatts)
+			}
+			if gpu.NvLinkCount > 0 {
+				fmt.Fprintf(w, "  NVLink: version %s links %d nominal %d GB/s per link\n", gpu.NvLinkVersion, gpu.NvLinkCount, gpu.NvLinkBandwidthGBps)
+				for _, link := range gpu.NvLinks {
+					remote := link.RemotePCI
+					if remote == "" {
+						remote = "n/a"
+					}
+					fmt.Fprintf(w, "  NVLink %d: %s -> %s (%s) read %.1f GiB write %.1f GiB\n", link.Index, linkStateLabel(link.Active), remote, link.RemoteDevice, float64(link.ReadBytes)/(1024*1024*1024), float64(link.WriteBytes)/(1024*1024*1024))
+				}
+			}
 		} else {
 			fmt.Fprintf(w, "GPU: %s NVML unavailable (%s)\n", gpu.Address, gpu.NVMLStatus)
 		}
@@ -181,4 +194,12 @@ func pciBARReportSuffix(device model.PCIDevice) string {
 		return ""
 	}
 	return " (" + strings.Join(parts, ", ") + ")"
+}
+
+// linkStateLabel renders an NVLink link state for the text report.
+func linkStateLabel(active bool) string {
+	if active {
+		return "active"
+	}
+	return "inactive"
 }

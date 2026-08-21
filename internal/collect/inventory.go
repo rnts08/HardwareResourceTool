@@ -63,6 +63,13 @@ func collectGPUTelemetry(s *model.Snapshot) {
 			s.GPUs[i].UtilizationPercent = gpu.Utilization
 			s.GPUs[i].TemperatureCelsius = gpu.Temperature
 			s.GPUs[i].PowerWatts = gpu.PowerWatts
+			s.GPUs[i].MIGInstances = gpu.MIGInstances
+			s.GPUs[i].NvLinks = gpu.NvLinks
+			s.GPUs[i].NvLinkCount = gpu.NvLinkCount
+			if gpu.NvLinkVersion > 0 {
+				s.GPUs[i].NvLinkVersion = fmt.Sprintf("%d.0", gpu.NvLinkVersion)
+				s.GPUs[i].NvLinkBandwidthGBps = nvlinkNominalGBps(gpu.NvLinkVersion)
+			}
 			s.GPUs[i].NVML = true
 			s.GPUs[i].NVMLStatus = "available"
 		}

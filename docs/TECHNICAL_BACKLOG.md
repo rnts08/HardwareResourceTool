@@ -286,13 +286,20 @@ Note: BAR type/prefetch/ROM come from the `IORESOURCE_*` flags of the
 IOMMU groups, whole-path NUMA boundaries, passthrough-device NUMA mismatch,
 and unbound endpoints in IOMMU groups.
 
-### 0.18.0 — GPU enrichment
+### 0.18.0 — GPU enrichment ✅ shipped in 0.18.0
 
 - Per-instance MIG inventory and NVLink topology/bandwidth from NVML, merged
   with the existing PCI identity and passthrough state.
 
 Acceptance: absent NVML still yields PCI identity with explicit availability;
 with NVML, per-instance MIG and NVLink appear in JSON/text/TUI.
+
+Note: MIG instances are enumerated through `nvmlDeviceGetMigDeviceHandleByIndex`
+with profile names from `nvmlGpuInstanceGetInfo` (falling back to the MIG
+device name); NVLink links report state, remote device type/PCI address, and
+cumulative read/write byte counters read with counter type 0 so counters are
+never reset. Nominal per-link bandwidth is derived from the NVLink major
+version and omitted when the version is unknown.
 
 ### 0.19.0 — QEMU depth
 

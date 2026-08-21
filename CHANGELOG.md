@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.18.0 — 2026-08-21
+
+- Enriched GPU telemetry with a per-instance MIG inventory: when MIG is
+  enabled, each instance now reports its index, GPU instance ID, profile name
+  (from `nvmlGpuInstanceGetInfo`, falling back to the MIG device name), memory
+  total/used/process bytes, utilization, temperature, power draw, and the
+  per-instance process memory aggregated across compute, graphics, and MPS
+  process queries. Exposed as `mig_instances` in JSON and shown in the TUI
+  GPU detail pane, Hardware tab, and text report.
+- Added NVLink topology and counters per GPU: link count and NVLink version,
+  per-link active state, remote device type (GPU or switch) with its PCI
+  address, and cumulative read/write byte counters read with counter type 0 so
+  the read is strictly non-mutating. Nominal per-link bandwidth in GB/s is
+  derived from the NVLink major version (v1 20, v2 25, v3 50, v4 100) and
+  omitted when the version is unknown. Exposed as `nvlink_version`,
+  `nvlink_count`, `nvlink_bandwidth_gbps`, and `nvlinks` in JSON, the TUI, and
+  the text report.
+
 ## 0.17.0 — 2026-08-20
 
 - Parsed the PCI resource table into structured BAR entries: each BAR now

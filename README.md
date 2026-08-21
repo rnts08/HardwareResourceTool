@@ -49,9 +49,14 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   present.
 - NVIDIA PCI identity plus optional dynamically loaded NVML identity, UUID,
   device and running-process framebuffer memory accounting, utilization,
-  temperature, power, ECC, and MIG-mode telemetry. GPUs assigned to KVM
-  guests through vfio are retained in inventory and reported as passed through
-  when host NVML telemetry is unavailable.
+  temperature, power, ECC, and MIG-mode telemetry. When MIG is enabled, each
+  MIG instance is inventoried with its profile, GPU instance ID, memory,
+  utilization, temperature, power, and per-instance process memory. NVLink
+  topology is reported per link with active state, remote device type and PCI
+  address, cumulative read/write byte counters (read without resetting), and
+  the nominal per-link bandwidth derived from the NVLink version. GPUs
+  assigned to KVM guests through vfio are retained in inventory and reported
+  as passed through when host NVML telemetry is unavailable.
 - KVM/QEMU discovery from Proxmox VE VM configuration, `/sys`, libvirt XML, `/proc`, cgroup v2, and bounded
   read-only QMP queries. VM data separates configured allocation, QEMU host
   process usage, cgroup usage, balloon values, guest-reported memory, device
@@ -251,7 +256,7 @@ Inspect the most useful new telemetry with jq:
 ```sh
 jq '.findings' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.XXXXXX/report.json
-jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.XXXXXX/report.json
+jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances,mig_instances,nvlink_version,nvlink_count,nvlink_bandwidth_gbps,nvlinks}' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.XXXXXX/report.json
 jq '.snapshot.top_processes' /tmp/hardware-resources-live.XXXXXX/report.json
 ```
@@ -298,8 +303,7 @@ and the virtualization platform before applying changes. The tool never runs
 remediation commands such as `sysctl`, `ethtool --set-*`, `numactl`, `virsh`,
 QMP mutating commands, or service restarts.
 
-The current backlog still includes ethtool offload/coalescing/RSS/statistics
-reads, NVML NVLink and per-instance MIG inventory, Redfish inventory, and
-broader vendor integration. See
+The current backlog still includes richer read-only QMP statistics, Redfish
+inventory, and broader vendor integration. See
 [docs/TECHNICAL_BACKLOG.md](docs/TECHNICAL_BACKLOG.md) and
 [docs/HARDWARE_IMPLEMENTATION.md](docs/HARDWARE_IMPLEMENTATION.md).

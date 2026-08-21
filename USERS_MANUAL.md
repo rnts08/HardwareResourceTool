@@ -93,7 +93,7 @@ fields. Useful checks are:
 
     jq '.findings' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.networks[] | {name,driver,driver_stats,ethtool_error}' /tmp/hardware-resources-live.ABC123/report.json
-    jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances}' /tmp/hardware-resources-live.ABC123/report.json
+    jq '.snapshot.gpus[] | {address,name,nvml_status,ecc_enabled,ecc_corrected,ecc_uncorrected,mig_enabled,mig_max_instances,mig_instances,nvlink_version,nvlink_count,nvlink_bandwidth_gbps,nvlinks}' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.virtualization.virtual_machines[] | {name,running,qmp_version,qmp_available,qmp_error,runtime_available,qmp_base_memory_bytes,qmp_vcpus,runtime_anon_huge_bytes,runtime_hugetlb_bytes,runtime_numa_bytes}' /tmp/hardware-resources-live.ABC123/report.json
     jq '.snapshot.top_processes' /tmp/hardware-resources-live.ABC123/report.json
 
@@ -247,7 +247,13 @@ capabilities. The path is the resolved upstream PCIe chain where sysfs makes
 it available.
 
 NVIDIA rows always show PCI identity when discovered. With NVML, they add name,
-framebuffer used/total, process-accounted framebuffer memory, utilization, temperature, and power. If NVML is
+framebuffer used/total, process-accounted framebuffer memory, utilization, temperature, and power. When MIG is
+enabled, each MIG instance is listed with its profile, GPU instance ID,
+memory used/total and per-instance process memory, utilization, temperature,
+and power. NVLink links report the NVLink version, active state, remote
+device type (GPU or switch) with its PCI address, cumulative read/write byte
+counters (read without resetting), and the nominal per-link bandwidth derived
+from the version. If NVML is
 missing or cannot initialize, the GPU remains visible with an explicit status;
 zero values do not mean zero GPU load. If the device is bound to `vfio-pci` or
 `pci-stub`, or assigned through a Proxmox `hostpciN` entry, it is reported as
@@ -377,7 +383,11 @@ resource_windows, AER statuses, SR-IOV total VFs, and Resizable BAR presence.
 
 gpus entries include PCI identity plus name, uuid, framebuffer total/used,
 process-accounted framebuffer bytes and memory_source, utilization, temperature, power, ECC enabled/corrected/uncorrected counts,
-MIG mode and maximum-instance information, passed_through, passed_through_vm,
+MIG mode and maximum-instance information plus per-instance mig_instances
+(index, gpu_instance_id, profile, memory, process memory, utilization,
+temperature, power), NVLink version/count/nominal bandwidth and per-link
+nvlinks (index, active, remote device type and PCI address, cumulative
+read/write bytes), passed_through, passed_through_vm,
 nvml_available, and nvml_status. PCI
 discovery is independent of NVML runtime telemetry.
 
@@ -469,7 +479,6 @@ availability, migration, latency, and data integrity.
 
 ## 8. Current limitations
 
-Not yet implemented are ethtool offload/coalescing/RSS feature decoding and
-some detailed statistics; NVML NVLink and per-instance MIG inventory;
-Redfish/BMC inventory; richer QMP domain statistics; and broad vendor-specific
-validation captures. Use platform-native sources when a field is unavailable.
+Not yet implemented are richer QMP domain statistics; Redfish/BMC inventory;
+and broad vendor-specific validation captures. Use platform-native sources
+when a field is unavailable.

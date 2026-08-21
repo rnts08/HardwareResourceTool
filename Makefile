@@ -3,7 +3,7 @@ SHELL := /bin/sh
 GO ?= go
 TARGET ?= hardware-resources
 LINUX_TARGET ?= hardware-resources-linux-amd64
-VERSION ?= 0.17.0
+VERSION ?= 0.18.0
 PREFIX ?= /usr/local
 DESTDIR ?=
 

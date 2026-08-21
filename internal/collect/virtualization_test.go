@@ -121,3 +121,47 @@ func TestVirtualizationParsers(t *testing.T) {
 		t.Fatalf("QMP version = %q", got)
 	}
 }
+
+func TestDiscoverQEMUProcessesProxmoxKvmBinary(t *testing.T) {
+	proc := t.TempDir()
+	qemu := filepath.Join(proc, "3020834")
+	if err := os.MkdirAll(qemu, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(qemu, "comm"), []byte("kvm\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmdline := "/usr/bin/kvm\x00-id\x00100\x00-name\x00guest=SVGPU01,debug-threads=on\x00-smp\x0040,sockets=1,cores=40\x00-m\x00131072\x00-qmp\x00unix:/var/run/qemu-server/100.qmp,server=on,wait=off\x00"
+	if err := os.WriteFile(filepath.Join(qemu, "cmdline"), []byte(cmdline), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	processes, err := discoverQEMUProcesses(proc)
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if len(processes) != 1 {
+		t.Fatalf("expected 1 qemu process, got %d", len(processes))
+	}
+	process := processes[0]
+	if process.PID != 3020834 || process.VMID != "100" || process.Name != "SVGPU01" || process.VCPU != 40 || process.Memory != 131072*1024*1024 || process.QMPPath != "/var/run/qemu-server/100.qmp" {
+		t.Fatalf("unexpected qemu process: %#v", process)
+	}
+
+	nonQEMU := filepath.Join(proc, "999")
+	if err := os.MkdirAll(nonQEMU, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nonQEMU, "comm"), []byte("systemd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nonQEMU, "cmdline"), []byte("/sbin/init\x00"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	processes, err = discoverQEMUProcesses(proc)
+	if err != nil {
+		t.Fatalf("rediscover: %v", err)
+	}
+	if len(processes) != 1 {
+		t.Fatalf("expected non-QEMU process to stay excluded, got %d", len(processes))
+	}
+}

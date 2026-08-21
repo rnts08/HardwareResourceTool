@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.19.1 — 2026-08-21
+
+- Fixed QEMU process discovery on Proxmox VE hosts: guests are launched as
+  `/usr/bin/kvm`, so `/proc/<pid>/comm` reports `kvm` and the discovery filter
+  (which only accepted `qemu-system-*` and `qemu-kvm`) rejected every guest
+  process. All VMs therefore appeared stopped with empty runtime telemetry
+  even while running. The `kvm` launcher name is now recognized.
+- Parsed the Proxmox `-smp 40,sockets=1,cores=40` form correctly: when no
+  explicit `cpus=` key is present, the leading `-smp` value is used as the
+  vCPU count instead of failing to parse and reporting 0.
+- Stripped the `guest=` prefix from the QEMU `-name guest=<name>,...`
+  argument so process names match VM configuration names during merging.
+
 ## 0.19.0 — 2026-08-21
 
 - Added read-only QMP block statistics per running VM: `query-blockstats`

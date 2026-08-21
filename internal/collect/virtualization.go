@@ -403,7 +403,7 @@ func discoverQEMUProcesses(procRoot string) ([]qemuProcess, error) {
 		if len(fields) == 0 || !isQEMUExecutable(fields[0]) {
 			continue
 		}
-		process := qemuProcess{PID: pid, VMID: qemuArgument(fields, "-id"), Name: strings.Split(qemuArgument(fields, "-name"), ",")[0], VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields), QMPPath: parseQMPPath(qemuArgument(fields, "-qmp"))}
+		process := qemuProcess{PID: pid, VMID: qemuArgument(fields, "-id"), Name: parseQEMUName(qemuArgument(fields, "-name")), VCPU: parseQEMUCPU(fields), Memory: parseQEMUMemory(fields), QMPPath: parseQMPPath(qemuArgument(fields, "-qmp"))}
 		if process.Name == "" {
 			process.Name = fmt.Sprintf("qemu-%d", pid)
 		}
@@ -728,7 +728,15 @@ func readCgroupUint(path string) (uint64, error) {
 
 func isQEMUExecutable(value string) bool {
 	base := filepath.Base(value)
-	return strings.HasPrefix(base, "qemu-system-") || base == "qemu-kvm"
+	return strings.HasPrefix(base, "qemu-system-") || base == "qemu-kvm" || base == "kvm"
+}
+
+// parseQEMUName extracts the guest name from the -name argument. QEMU and
+// both libvirt and Proxmox launchers use a comma-separated list whose first
+// element is commonly prefixed with "guest=".
+func parseQEMUName(value string) string {
+	name := strings.Split(value, ",")[0]
+	return strings.TrimPrefix(name, "guest=")
 }
 
 func qemuArgument(fields []string, key string) string {
@@ -749,11 +757,19 @@ func parseQEMUCPU(fields []string) int64 {
 		return 0
 	}
 	if strings.Contains(value, ",") {
+		found := false
 		for _, part := range strings.Split(value, ",") {
 			if strings.HasPrefix(part, "cpus=") {
 				value = strings.TrimPrefix(part, "cpus=")
+				found = true
 				break
 			}
+		}
+		// QEMU treats the leading -smp value as the CPU count when no
+		// explicit cpus= key is present, as in Proxmox's
+		// "-smp 40,sockets=1,cores=40".
+		if !found {
+			value = strings.SplitN(value, ",", 2)[0]
 		}
 	}
 	result, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)

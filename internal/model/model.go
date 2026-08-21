@@ -21,7 +21,33 @@ type Snapshot struct {
 	NUMA                NUMA            `json:"numa"`
 	System              SystemSettings  `json:"system"`
 	TopProcesses        []ProcessSample `json:"top_processes"`
+	USB                 []USBDevice     `json:"usb_devices,omitempty"`
+	USBMonAvailable     bool            `json:"usbmon_available,omitempty"`
+	CPUPower            []CPUPolicy     `json:"cpu_power_policies,omitempty"`
 	Errors              []string        `json:"collector_errors"`
+}
+
+// USBDevice describes one USB device from sysfs (interface directories and
+// root hubs are excluded).
+type USBDevice struct {
+	BusID        string `json:"bus_id"`
+	VendorID     string `json:"vendor_id"`
+	ProductID    string `json:"product_id"`
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Product      string `json:"product,omitempty"`
+	Serial       string `json:"serial,omitempty"`
+	SpeedMbps    int64  `json:"speed_mbps,omitempty"`
+	Class        string `json:"class,omitempty"`
+}
+
+// CPUPolicy describes one cpufreq policy directory and its tunables.
+type CPUPolicy struct {
+	Policy             string   `json:"policy"`
+	CPUs               string   `json:"cpus,omitempty"`
+	Governor           string   `json:"governor,omitempty"`
+	AvailableGovernors []string `json:"available_governors,omitempty"`
+	EPP                string   `json:"epp,omitempty"`
+	AvailableEPP       []string `json:"available_epp,omitempty"`
 }
 
 type CPU struct {
@@ -52,14 +78,17 @@ type Memory struct {
 }
 
 type Disk struct {
-	Name             string  `json:"name"`
-	ReadBytes        uint64  `json:"read_bytes"`
-	WriteBytes       uint64  `json:"write_bytes"`
-	ReadsPerSec      float64 `json:"reads_per_second"`
-	WritesPerSec     float64 `json:"writes_per_second"`
-	ReadBytesPerSec  float64 `json:"read_bytes_per_second"`
-	WriteBytesPerSec float64 `json:"write_bytes_per_second"`
-	InFlight         int64   `json:"in_flight"`
+	Name             string   `json:"name"`
+	ReadBytes        uint64   `json:"read_bytes"`
+	WriteBytes       uint64   `json:"write_bytes"`
+	ReadsPerSec      float64  `json:"reads_per_second"`
+	WritesPerSec     float64  `json:"writes_per_second"`
+	ReadBytesPerSec  float64  `json:"read_bytes_per_second"`
+	WriteBytesPerSec float64  `json:"write_bytes_per_second"`
+	InFlight         int64    `json:"in_flight"`
+	DMName           string   `json:"dm_name,omitempty"`
+	DMUUID           string   `json:"dm_uuid,omitempty"`
+	Slaves           []string `json:"slaves,omitempty"`
 }
 
 type Network struct {

@@ -38,6 +38,7 @@ type modelState struct {
 	findingsMode   bool
 	processSort    byte
 	processCmdline bool
+	powerMode      bool
 	collectTime    time.Duration
 	pickerMode     bool
 	detailMode     bool
@@ -174,6 +175,10 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "C", "M", "L":
 			if !m.pickerMode && !m.detailMode && !m.showHelp && m.tab == 1 {
 				m.processSort = msg.String()[0]
+			}
+		case "p":
+			if !m.pickerMode && !m.detailMode && !m.showHelp && m.tab == 2 {
+				m.powerMode = !m.powerMode
 			}
 		case "g":
 			if !m.pickerMode {
@@ -683,7 +688,7 @@ func (m modelState) tabContent() string {
 	case 1:
 		return viewTop(m.snapshot, m.history, m.processSort, m.processCmdline)
 	case 2:
-		return viewCPUMemory(m.snapshot, m.history, m.thresholds)
+		return viewCPUMemory(m.snapshot, m.history, m.thresholds, m.powerMode)
 	case 3:
 		return viewHardware(m.snapshot)
 	case 4:
@@ -875,6 +880,7 @@ func renderHelp(thresholds analyze.Thresholds) string {
 		"  f                  toggle the findings view",
 		"  c                  on Processes: toggle full command lines",
 		"  C / M / L          on Processes: sort by cpu, memory, lifetime cpu",
+		"  p                  on CPU/Memory: toggle the cpufreq power advisor",
 		"  j/k, PgUp/PgDn     scroll the active view vertically",
 		"  g / G              jump to the top / bottom of the active view",
 		"  </>, shift+arrows  scroll the active view horizontally",
@@ -941,7 +947,7 @@ func viewOverview(snapshot model.Snapshot, history []model.Snapshot, thresholds 
 }
 
 // viewCPUMemory renders the dedicated CPU and memory detail tab.
-func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds analyze.Thresholds) string {
+func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds analyze.Thresholds, powerMode bool) string {
 	var b strings.Builder
 	b.WriteString("CPU\n")
 	fmt.Fprintf(&b, "  logical CPUs     %d\n", snapshot.CPU.LogicalCPUs)
@@ -978,7 +984,58 @@ func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds
 	if snapshot.Memory.TotalBytes > 0 && snapshot.Memory.UsedPercent > thresholds.MemoryUsedCritical {
 		b.WriteString("  [critical] memory usage is above the configured threshold\n")
 	}
+	if powerMode {
+		b.WriteString(renderPowerAdvisor(snapshot.CPUPower))
+	}
 	return b.String()
+}
+
+// renderPowerAdvisor shows current cpufreq/EPP state with copyable commands
+// for switching to common alternatives. Commands are displayed, never run.
+func renderPowerAdvisor(policies []model.CPUPolicy) string {
+	var b strings.Builder
+	b.WriteString("\nCPU power advisor (read-only; commands are shown, never executed)\n")
+	if len(policies) == 0 {
+		b.WriteString("  No cpufreq policies exposed by the kernel.\n")
+		return b.String()
+	}
+	for _, policy := range policies {
+		fmt.Fprintf(&b, "  %s cpus %-12s governor %s", policy.Policy, policy.CPUs, policy.Governor)
+		if len(policy.AvailableGovernors) > 0 {
+			b.WriteString("  available: " + strings.Join(policy.AvailableGovernors, " "))
+		}
+		b.WriteString("\n")
+		if policy.EPP != "" {
+			fmt.Fprintf(&b, "    EPP %s", policy.EPP)
+			if len(policy.AvailableEPP) > 0 {
+				b.WriteString("  available: " + strings.Join(policy.AvailableEPP, " "))
+			}
+			b.WriteString("\n")
+		}
+		base := "/sys/devices/system/cpu/cpufreq/" + policy.Policy
+		for _, want := range []string{"performance", "powersave"} {
+			if containsValue(policy.AvailableGovernors, want) && policy.Governor != want {
+				fmt.Fprintf(&b, "    suggest: echo %s | sudo tee %s/scaling_governor\n", want, base)
+				break
+			}
+		}
+		for _, want := range []string{"balance_performance", "performance"} {
+			if containsValue(policy.AvailableEPP, want) && policy.EPP != want {
+				fmt.Fprintf(&b, "    suggest: echo %s | sudo tee %s/energy_performance_preference\n", want, base)
+				break
+			}
+		}
+	}
+	return b.String()
+}
+
+func containsValue(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func kernelEventDeltas(previous, current model.KernelEvents) model.KernelEvents {
@@ -1014,7 +1071,14 @@ func viewStorage(snapshot model.Snapshot) string {
 		b.WriteString("  No block devices reported.\n")
 	}
 	for _, disk := range snapshot.Disks {
-		fmt.Fprintf(&b, "  %-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d\n", disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight)
+		dm := ""
+		if disk.DMName != "" {
+			dm = fmt.Sprintf("  dm %s", disk.DMName)
+			if len(disk.Slaves) > 0 {
+				dm += " <- " + strings.Join(disk.Slaves, "+")
+			}
+		}
+		fmt.Fprintf(&b, "  %-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d%s\n", disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight, dm)
 	}
 	b.WriteString("\nFilesystems\n")
 	for _, filesystem := range snapshot.Filesystems {
@@ -1098,7 +1162,60 @@ func viewHardware(snapshot model.Snapshot) string {
 	for _, memory := range snapshot.MemoryDevices {
 		fmt.Fprintf(&b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)
 	}
+	unknown := make([]model.PCIDevice, 0)
+	for _, device := range snapshot.PCI {
+		if isPCIUnknown(device) {
+			unknown = append(unknown, device)
+		}
+	}
+	b.WriteString("\nUnknown / unclaimed PCI devices\n")
+	if len(unknown) == 0 {
+		b.WriteString("  None; every device has a driver bound.\n")
+	}
+	for _, device := range unknown {
+		fmt.Fprintf(&b, "  %-16s %s:%s class %s vendor %s  no driver bound\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.VendorID)
+	}
+	b.WriteString("\nUSB devices\n")
+	if len(snapshot.USB) == 0 {
+		b.WriteString("  No USB devices reported.\n")
+	}
+	for _, usb := range snapshot.USB {
+		desc := usb.Product
+		if desc == "" {
+			desc = "unknown device"
+		}
+		if usb.Manufacturer != "" {
+			desc += " (" + usb.Manufacturer + ")"
+		}
+		fmt.Fprintf(&b, "  %-8s %s:%s  %s", usb.BusID, usb.VendorID, usb.ProductID, desc)
+		if usb.SpeedMbps > 0 {
+			fmt.Fprintf(&b, "  %d Mb/s", usb.SpeedMbps)
+		}
+		if usb.Serial != "" {
+			fmt.Fprintf(&b, "  sn %s", usb.Serial)
+		}
+		b.WriteString("\n")
+	}
+	if snapshot.USBMonAvailable {
+		b.WriteString("  usbmon available: yes (/sys/kernel/debug/usb/usbmon)\n")
+	} else {
+		b.WriteString("  usbmon available: no (debugfs not mounted or missing)\n")
+	}
 	return b.String()
+}
+
+// isPCIUnknown reports whether a PCI device has no driver bound and looks
+// unclaimed: an unknown class code or an absent/all-ones vendor id.
+func isPCIUnknown(device model.PCIDevice) bool {
+	if device.Driver != "" {
+		return false
+	}
+	class := strings.ToLower(strings.TrimPrefix(strings.ToLower(device.Class), "0x"))
+	vendor := strings.ToLower(strings.TrimPrefix(strings.ToLower(device.VendorID), "0x"))
+	if class == "" || class == "ffffff" || strings.HasPrefix(class, "ff") {
+		return true
+	}
+	return vendor == "" || vendor == "0000" || vendor == "ffff"
 }
 
 func viewThermal(snapshot model.Snapshot) string {

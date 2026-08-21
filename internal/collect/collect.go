@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -16,18 +17,20 @@ import (
 )
 
 type Collector struct {
-	procRoot      string
-	sysRoot       string
-	etcRoot       string
-	logRoot       string
-	prev          *rawCounters
-	prevAt        time.Time
-	hardware      model.Snapshot
-	hardwareReady bool
-	snapshotCount int
-	heavyInterval int
-	ethtoolCache  map[string]ethtoolData
-	vmHeavy       map[int]vmHeavyTelemetry
+	procRoot        string
+	sysRoot         string
+	etcRoot         string
+	logRoot         string
+	prev            *rawCounters
+	prevAt          time.Time
+	hardware        model.Snapshot
+	hardwareReady   bool
+	usbCached       []model.USBDevice
+	usbmonAvailable bool
+	snapshotCount   int
+	heavyInterval   int
+	ethtoolCache    map[string]ethtoolData
+	vmHeavy         map[int]vmHeavyTelemetry
 }
 
 // defaultHeavyInterval is the number of snapshots between heavy per-snapshot
@@ -95,6 +98,15 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectTopProcesses(&snapshot, &current, now.Sub(c.prevAt).Seconds()); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
+	if !c.hardwareReady {
+		c.collectUSB(&snapshot)
+		c.usbCached = snapshot.USB
+		c.usbmonAvailable = snapshot.USBMonAvailable
+	} else {
+		snapshot.USB = c.usbCached
+		snapshot.USBMonAvailable = c.usbmonAvailable
+	}
+	c.collectCPUPower(&snapshot)
 	if !c.hardwareReady {
 		if err := c.collectHardware(&c.hardware); err != nil {
 			snapshot.Errors = append(snapshot.Errors, err.Error())
@@ -291,9 +303,31 @@ func (c *Collector) collectDisks(s *model.Snapshot, raw *rawCounters) error {
 			continue
 		}
 		raw.disks[name] = diskCounter{reads: values[0], sectorsRead: values[1], writes: values[2], sectorsWritten: values[3], inFlight: values[4]}
-		s.Disks = append(s.Disks, model.Disk{Name: name, ReadBytes: values[1] * 512, WriteBytes: values[3] * 512, InFlight: int64(values[4])})
+		disk := model.Disk{Name: name, ReadBytes: values[1] * 512, WriteBytes: values[3] * 512, InFlight: int64(values[4])}
+		if strings.HasPrefix(name, "dm-") {
+			readDMInfo(filepath.Join(c.sysRoot, "block", name), &disk)
+		}
+		s.Disks = append(s.Disks, disk)
 	}
 	return nil
+}
+
+// readDMInfo fills device-mapper identity and slave devices for a dm-* disk.
+func readDMInfo(blockDir string, disk *model.Disk) {
+	if data, err := os.ReadFile(filepath.Join(blockDir, "dm", "name")); err == nil {
+		disk.DMName = strings.TrimSpace(string(data))
+	}
+	if data, err := os.ReadFile(filepath.Join(blockDir, "dm", "uuid")); err == nil {
+		if uuid := strings.TrimSpace(string(data)); uuid != "" {
+			disk.DMUUID = uuid
+		}
+	}
+	if entries, err := os.ReadDir(filepath.Join(blockDir, "slaves")); err == nil {
+		for _, entry := range entries {
+			disk.Slaves = append(disk.Slaves, entry.Name())
+		}
+		sort.Strings(disk.Slaves)
+	}
 }
 
 func (c *Collector) collectNetworks(s *model.Snapshot, raw *rawCounters, heavy bool) error {

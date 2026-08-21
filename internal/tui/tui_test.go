@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"hardware-resources-tool/internal/analyze"
@@ -385,5 +386,108 @@ func TestProcessStateLabelUnknown(t *testing.T) {
 	}
 	if got := processStateLabel(""); got != "Unknown" {
 		t.Fatalf("empty state label = %q", got)
+	}
+}
+
+func TestIsPCIUnknownClassification(t *testing.T) {
+	cases := []struct {
+		device model.PCIDevice
+		want   bool
+	}{
+		{model.PCIDevice{Driver: "nvme", Class: "0x010802", VendorID: "0x144d"}, false},
+		{model.PCIDevice{Class: "0xff0000", VendorID: "0x10de"}, true},
+		{model.PCIDevice{Class: "0x010802", VendorID: "0xffff"}, true},
+		{model.PCIDevice{Class: "0x010802", VendorID: ""}, true},
+		{model.PCIDevice{Class: "", VendorID: "0x8086"}, true},
+		{model.PCIDevice{Class: "0xffffff", VendorID: "0x8086"}, true},
+	}
+	for _, tc := range cases {
+		if got := isPCIUnknown(tc.device); got != tc.want {
+			t.Fatalf("isPCIUnknown(%+v) = %t, want %t", tc.device, got, tc.want)
+		}
+	}
+}
+
+func TestHardwareViewShowsUnknownPCIAndUSB(t *testing.T) {
+	snapshot := model.Snapshot{
+		PCI: []model.PCIDevice{
+			{Address: "0000:07:00.0", VendorID: "0x10de", DeviceID: "0x2684", Class: "0xff0000"},
+			{Address: "0000:01:00.0", VendorID: "0x144d", DeviceID: "0xa808", Class: "0x010802", Driver: "nvme"},
+		},
+		USB:             []model.USBDevice{{BusID: "1-2", VendorID: "8087", ProductID: "0026", Product: "AX201 Bluetooth", Manufacturer: "Intel Corp.", SpeedMbps: 12}},
+		USBMonAvailable: true,
+	}
+	view := stripANSI(viewHardware(snapshot))
+	for _, expected := range []string{
+		"Unknown / unclaimed PCI devices",
+		"0000:07:00.0",
+		"no driver bound",
+		"USB devices",
+		"1-2      8087:0026  AX201 Bluetooth (Intel Corp.)  12 Mb/s",
+		"usbmon available: yes",
+	} {
+		if !contains(view, expected) {
+			t.Fatalf("view missing %q: %s", expected, view)
+		}
+	}
+	if !contains(view, "0000:01:00.0") {
+		t.Fatalf("driven device missing from main PCIe table: %s", view)
+	}
+	unknownSection := view[strings.Index(view, "Unknown / unclaimed PCI devices"):strings.Index(view, "USB devices")]
+	if contains(unknownSection, "0000:01:00.0") {
+		t.Fatalf("driven device leaked into unknown section: %s", unknownSection)
+	}
+}
+
+func TestStorageViewShowsDMDevices(t *testing.T) {
+	snapshot := model.Snapshot{Disks: []model.Disk{{Name: "dm-0", DMName: "vg0-root", Slaves: []string{"sda2", "sdb2"}}}}
+	view := stripANSI(viewStorage(snapshot))
+	if !contains(view, "dm vg0-root <- sda2+sdb2") {
+		t.Fatalf("dm annotation missing: %s", view)
+	}
+}
+
+func TestRenderPowerAdvisorSuggestions(t *testing.T) {
+	policies := []model.CPUPolicy{{
+		Policy:             "policy0",
+		CPUs:               "0-7",
+		Governor:           "powersave",
+		AvailableGovernors: []string{"performance", "powersave"},
+		EPP:                "power",
+		AvailableEPP:       []string{"balance_performance", "performance", "power"},
+	}}
+	view := stripANSI(renderPowerAdvisor(policies))
+	for _, expected := range []string{
+		"CPU power advisor",
+		"governor powersave",
+		"echo performance | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor",
+		"echo balance_performance | sudo tee /sys/devices/system/cpu/cpufreq/policy0/energy_performance_preference",
+	} {
+		if !contains(view, expected) {
+			t.Fatalf("advisor missing %q: %s", expected, view)
+		}
+	}
+	empty := stripANSI(renderPowerAdvisor(nil))
+	if !contains(empty, "No cpufreq policies") {
+		t.Fatalf("empty advisor state missing: %s", empty)
+	}
+}
+
+func TestPowerModeToggleKey(t *testing.T) {
+	m := modelState{tab: 2}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	state := updated.(modelState)
+	if !state.powerMode {
+		t.Fatal("p did not enable power mode")
+	}
+	updated, _ = state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if updated.(modelState).powerMode {
+		t.Fatal("second p did not disable power mode")
+	}
+	// p is inert on other tabs.
+	other := modelState{tab: 0}
+	updated, _ = other.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if updated.(modelState).powerMode {
+		t.Fatal("p toggled power mode outside CPU/Memory tab")
 	}
 }

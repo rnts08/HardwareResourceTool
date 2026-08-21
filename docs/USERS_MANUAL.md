@@ -161,7 +161,9 @@ move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
 scroll the active window vertically; g and G jump to the top and bottom; < and
 > or Shift+arrows scroll it horizontally; d opens a picker of VMs, GPUs, PCI
 devices, and DIMMs from any window where j/k select and Enter expands a
-field-by-field detail pane; f toggles the findings view; Esc closes the pane,
+field-by-field detail pane; f toggles the findings view; c toggles full
+command lines and C/M/L change the sort on Processes; p toggles the cpufreq
+power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
 help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
@@ -180,6 +182,15 @@ the full memory picture — total and available bytes with a used-history
 sparkline, swap configuration and activity, the host hugetlb pool and
 per-NUMA-node pools, NUMA node count with remote events, transparent huge
 page policy, swappiness, and process limits.
+
+Pressing `p` toggles the CPU power advisor. It lists every cpufreq policy
+with its related CPUs, current governor, energy performance preference (EPP),
+and the alternatives the kernel exposes. Where a common alternative
+(`performance`/`powersave` governor, `balance_performance`/`performance` EPP)
+differs from the current setting, it prints the exact command to switch — for
+example `echo performance | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor`.
+The tool is read-only: these commands are shown for you to copy, never
+executed.
 
 ### Overview
 
@@ -202,8 +213,10 @@ evidence of memory pressure than used percentage alone.
 
 Disks show device name, read/write throughput per second, read/write
 operations per second, and in-flight I/O. Loop and RAM pseudo devices are
-filtered. These are host block-device rates, not necessarily guest filesystem
-rates.
+filtered. Device-mapper devices (`dm-*`) are annotated with their mapper name
+(for example an LVM logical volume) and the slave block devices backing them,
+so I/O on a volume can be traced to its physical disks. These are host
+block-device rates, not necessarily guest filesystem rates.
 
 Filesystems show mount point, read/write mode, used percentage, available
 bytes, and type. The capacity list includes physical non-USB block-backed
@@ -283,6 +296,14 @@ statistics per device (read/write bytes and operations from the read-only
 `query-blockstats` accounting query). Memory-device rows show locator, size,
 type, speed, configured speed, and EDAC corrected/uncorrected errors where
 available.
+
+Below the memory devices, the Hardware window lists unknown or unclaimed PCI
+devices — entries with no driver bound whose class code is unclassified
+(`0xffxxxx`) or whose vendor id is absent or all-ones. These often indicate
+firmware that needs enabling, a missing driver, or a device intentionally
+left unbound for passthrough. A USB section follows: bus ID, vendor/product
+IDs, product and manufacturer strings, serial, and speed for each USB device,
+plus whether `usbmon` is available under debugfs for packet-level tracing.
 
 Pressing `d` opens a picker of every VM, GPU, PCI device, and DIMM reported in
 this capture. `j`/`k` move the selection and Enter opens a detail pane that

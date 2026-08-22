@@ -592,3 +592,54 @@ func TestEscClosesTopmostOverlayFirst(t *testing.T) {
 		t.Fatal("esc did not close detail pane")
 	}
 }
+
+func TestLoadingViewShowsUntilFirstSnapshot(t *testing.T) {
+	m := modelState{awaitingFirst: true, thresholds: analyze.DefaultThresholds}
+	view := m.View()
+	if !contains(view, "Collecting host data") {
+		t.Fatalf("loading view missing spinner text: %q", view)
+	}
+	if contains(view, "Overview") {
+		t.Fatal("tab chrome rendered while loading")
+	}
+	// The first snapshot clears the loading state and stops the animation.
+	updated, _ := m.Update(model.Snapshot{})
+	state := updated.(modelState)
+	if state.awaitingFirst {
+		t.Fatal("snapshot delivery did not clear awaitingFirst")
+	}
+	updated, _ = state.Update(spinnerTickMsg{})
+	if !contains(updated.(modelState).View(), "Collecting host data") == false {
+		t.Fatal("spinner rescheduled after load completed")
+	}
+
+	empty := modelState{thresholds: analyze.DefaultThresholds}
+	if contains(empty.View(), "Collecting host data") {
+		t.Fatal("loading view shown without awaitingFirst flag")
+	}
+}
+
+func TestHardwareSectionOrder(t *testing.T) {
+	snapshot := model.Snapshot{
+		GPUs:           []model.GPU{{Address: "0000:01:00.0", VendorID: "0x10de", DeviceID: "0x2684", Name: "L40S", NVML: true}},
+		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{{Name: "vm1"}}},
+		MemoryDevices:  []model.MemoryDevice{{Locator: "DIMM_A1", SizeBytes: 32 << 30}},
+		PCI:            []model.PCIDevice{{Address: "0000:00:1f.6", VendorID: "0x8086", DeviceID: "0x15f3", Class: "0x0200", Driver: "e1000e"}},
+	}
+	view := stripANSI(viewHardware(snapshot))
+	order := []string{"NVIDIA GPUs", "KVM/QEMU domains", "Memory devices", "PCIe devices", "Unknown / unclaimed PCI devices", "USB devices"}
+	last := -1
+	for _, section := range order {
+		idx := strings.Index(view, section)
+		if idx < 0 {
+			t.Fatalf("section %q missing", section)
+		}
+		if idx < last {
+			t.Fatalf("section %q appears out of order:\n%s", section, view)
+		}
+		last = idx
+	}
+	if strings.Index(view, "0000:00:1f.6") < strings.Index(view, "L40S") {
+		t.Fatalf("PCI table still precedes GPUs:\n%s", view)
+	}
+}

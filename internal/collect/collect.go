@@ -17,20 +17,24 @@ import (
 )
 
 type Collector struct {
-	procRoot        string
-	sysRoot         string
-	etcRoot         string
-	logRoot         string
-	prev            *rawCounters
-	prevAt          time.Time
-	hardware        model.Snapshot
-	hardwareReady   bool
-	usbCached       []model.USBDevice
-	usbmonAvailable bool
-	snapshotCount   int
-	heavyInterval   int
-	ethtoolCache    map[string]ethtoolData
-	vmHeavy         map[int]vmHeavyTelemetry
+	procRoot          string
+	sysRoot           string
+	etcRoot           string
+	logRoot           string
+	prev              *rawCounters
+	prevAt            time.Time
+	hardware          model.Snapshot
+	hardwareReady     bool
+	usbCached         []model.USBDevice
+	usbmonAvailable   bool
+	eventsCache       model.KernelEvents
+	eventsAt          time.Time
+	gpuTelemetryCache []model.GPU
+	gpuTelemetryAt    time.Time
+	snapshotCount     int
+	heavyInterval     int
+	ethtoolCache      map[string]ethtoolData
+	vmHeavy           map[int]vmHeavyTelemetry
 }
 
 // defaultHeavyInterval is the number of snapshots between heavy per-snapshot
@@ -86,7 +90,7 @@ func (c *Collector) Snapshot() model.Snapshot {
 	if err := c.collectFilesystems(&snapshot); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
-	if err := c.collectSystem(&snapshot, &current); err != nil {
+	if err := c.collectSystem(&snapshot, &current, heavy); err != nil {
 		snapshot.Errors = append(snapshot.Errors, err.Error())
 	}
 	if err := c.collectThermal(&snapshot); err != nil {
@@ -116,8 +120,17 @@ func (c *Collector) Snapshot() model.Snapshot {
 	snapshot.PCI = append(snapshot.PCI, c.hardware.PCI...)
 	snapshot.MemoryDevices = append(snapshot.MemoryDevices, c.hardware.MemoryDevices...)
 	snapshot.GPUs = append(snapshot.GPUs, c.hardware.GPUs...)
-	collectGPUTelemetry(&snapshot)
-	correlateGPUThermal(&snapshot)
+	// NVML telemetry enumerates GPU processes and is comparatively expensive.
+	// It runs on the first snapshot and on heavy snapshots; light snapshots
+	// reuse the cached values so dashboards stay stable without re-reading.
+	if heavy || c.gpuTelemetryAt.IsZero() {
+		collectGPUTelemetry(&snapshot)
+		correlateGPUThermal(&snapshot)
+		c.gpuTelemetryCache = append([]model.GPU(nil), snapshot.GPUs...)
+		c.gpuTelemetryAt = now
+	} else {
+		snapshot.GPUs = append(snapshot.GPUs, c.gpuTelemetryCache...)
+	}
 
 	if c.prev != nil {
 		seconds := now.Sub(c.prevAt).Seconds()
@@ -475,7 +488,7 @@ func readFstabNetworkMounts(path string) map[string]bool {
 	return result
 }
 
-func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
+func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters, heavy bool) error {
 	var errs []string
 	if data, err := os.ReadFile(filepath.Join(c.sysRoot, "kernel/mm/transparent_hugepage/enabled")); err == nil {
 		s.System.THP = strings.TrimSpace(string(data))
@@ -497,7 +510,15 @@ func (c *Collector) collectSystem(s *model.Snapshot, raw *rawCounters) error {
 	if len(s.System.Sysctls) == 0 {
 		s.System.Sysctls = nil
 	}
-	s.System.KernelEvents = collectKernelEvents(c.logRoot)
+	// Kernel-event scanning reads up to 256 KiB from each of three log files
+	// and classifies every line; that is too much work for every snapshot.
+	// Refresh on the first snapshot and on heavy snapshots, then serve the
+	// cached counts in between so overview deltas stay stable.
+	if heavy || c.eventsAt.IsZero() {
+		c.eventsCache = collectKernelEvents(c.logRoot)
+		c.eventsAt = time.Now()
+	}
+	s.System.KernelEvents = c.eventsCache
 	governors := map[string]bool{}
 	for _, path := range glob(filepath.Join(c.sysRoot, "devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
 		if data, err := os.ReadFile(path); err == nil {

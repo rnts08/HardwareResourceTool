@@ -65,9 +65,6 @@ func (c *Collector) collectTopProcesses(s *model.Snapshot, raw *rawCounters, sec
 		if fields := strings.Fields(string(stat)); len(fields) > 2 {
 			sample.State = fields[2]
 		}
-		if cmdline, readErr := os.ReadFile(filepath.Join(base, "cmdline")); readErr == nil {
-			sample.Cmdline = truncateRunes(strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " ")), maxCmdlineRunes)
-		}
 		candidates = append(candidates, sample)
 	}
 	sort.Slice(candidates, func(i, j int) bool {
@@ -81,6 +78,12 @@ func (c *Collector) collectTopProcesses(s *model.Snapshot, raw *rawCounters, sec
 	}
 	s.TopProcesses = make([]model.ProcessSample, 0, len(candidates))
 	for _, sample := range candidates {
+		// Command lines are read only for the reported top processes; every
+		// host process is scanned each snapshot and reading cmdline for all
+		// of them dominated collection cost on busy systems.
+		if cmdline, readErr := os.ReadFile(filepath.Join(c.procRoot, strconv.Itoa(int(sample.pid)), "cmdline")); readErr == nil {
+			sample.Cmdline = truncateRunes(strings.TrimSpace(strings.ReplaceAll(string(cmdline), "\x00", " ")), maxCmdlineRunes)
+		}
 		s.TopProcesses = append(s.TopProcesses, sample.ProcessSample)
 	}
 	return nil

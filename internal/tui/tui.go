@@ -39,6 +39,8 @@ type modelState struct {
 	processSort    byte
 	processCmdline bool
 	powerMode      bool
+	awaitingFirst  bool
+	spinnerIdx     int
 	collectTime    time.Duration
 	pickerMode     bool
 	detailMode     bool
@@ -106,7 +108,7 @@ func Run(collector *collect.Collector, interval time.Duration, thresholds analyz
 	if interval < 500*time.Millisecond {
 		interval = 500 * time.Millisecond
 	}
-	m := modelState{collector: collector, interval: interval, thresholds: thresholds, collecting: true}
+	m := modelState{collector: collector, interval: interval, thresholds: thresholds, collecting: true, awaitingFirst: true}
 	// The alternate screen gives every view the full window height from the
 	// first frame instead of growing inline with the tallest tab.
 	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
@@ -126,7 +128,19 @@ func (m *modelState) switchTo(tab int) {
 	m.xoffset = m.xoffsets[tab]
 }
 
-func (m modelState) Init() tea.Cmd { return tea.Batch(collectNow(m.collector), tick(m.interval)) }
+func (m modelState) Init() tea.Cmd {
+	return tea.Batch(collectNow(m.collector), tick(m.interval), spin())
+}
+
+// spinnerTickMsg drives the loading animation shown until the first
+// snapshot arrives; it stops itself once data is on screen.
+type spinnerTickMsg struct{}
+
+func spin() tea.Cmd {
+	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} })
+}
+
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := message.(type) {
@@ -280,6 +294,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case model.Snapshot:
 		m.collecting = false
+		m.awaitingFirst = false
 		m.snapshot, m.findings, m.err = msg, analyze.FindingsWithThresholds(msg, m.thresholds), nil
 		m.collectTime = time.Duration(msg.CollectDurationMS) * time.Millisecond
 		if m.pickerMode {
@@ -295,6 +310,12 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		// The timer chain is owned by tickMsg. Scheduling another timer here
 		// would accumulate redraws when collection completes after a tick.
 		return m, nil
+	case spinnerTickMsg:
+		if !m.awaitingFirst {
+			return m, nil
+		}
+		m.spinnerIdx = (m.spinnerIdx + 1) % len(spinnerFrames)
+		return m, spin()
 	case tickMsg:
 		// Paused and in-flight collections never start a second snapshot, so
 		// slow collection cannot race or backlog. The tick chain continues so
@@ -309,6 +330,49 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(collectNow(m.collector), tick(m.interval))
 	}
 	return m, nil
+}
+
+// loadingView renders the first-run screen while the initial collection is
+// still in flight: a centered spinner with progress detail instead of empty
+// windows.
+func (m modelState) loadingView() string {
+	frame := spinnerFrames[m.spinnerIdx%len(spinnerFrames)]
+	lines := []string{
+		"",
+		titleStyle.Render(fmt.Sprintf("%s  Collecting host data", frame)),
+		"",
+		dimStyle.Render("hardware inventory, PCI topology, first rates baseline"),
+	}
+	if m.collectTime > 0 {
+		lines = append(lines, "", dimStyle.Render(fmt.Sprintf("last pass took %s", m.collectTime.Round(time.Millisecond))))
+	}
+	width, height := m.width, m.height
+	if width <= 0 {
+		width = 80
+	}
+	if height <= 0 {
+		height = 24
+	}
+	top := (height - len(lines)) / 2
+	if top < 0 {
+		top = 0
+	}
+	out := make([]string, 0, height)
+	for i := 0; i < top; i++ {
+		out = append(out, "")
+	}
+	for _, line := range lines {
+		visible := lipgloss.Width(line)
+		left := (width - visible) / 2
+		if left < 0 {
+			left = 0
+		}
+		out = append(out, strings.Repeat(" ", left)+line)
+	}
+	for len(out) < height {
+		out = append(out, "")
+	}
+	return strings.Join(out[:height], "\n")
 }
 
 func splitLines(value string) []string {
@@ -333,6 +397,9 @@ func pageStep(height int, key string) int {
 }
 
 func (m modelState) View() string {
+	if m.awaitingFirst {
+		return m.loadingView()
+	}
 	if m.showHelp {
 		return renderScrolled("", renderHelp(m.thresholds), "", m.width, m.height, 0, 0)
 	}
@@ -1237,65 +1304,113 @@ func viewFindings(findings []model.Finding) string {
 
 func viewHardware(snapshot model.Snapshot) string {
 	var b strings.Builder
-	b.WriteString("PCIe devices\n")
+	fmt.Fprintf(&b, "Hardware: %d PCI devices, %d GPUs, %d DIMMs, %d block devices, %d NICs, %d USB\n", len(snapshot.PCI), len(snapshot.GPUs), len(snapshot.MemoryDevices), len(snapshot.Disks), len(snapshot.Networks), len(snapshot.USB))
+	b.WriteString(renderGPUs(snapshot))
+	b.WriteString(renderKVMDomains(snapshot))
+	b.WriteString(renderMemoryDevices(snapshot))
+	b.WriteString("\nPCIe devices\n")
 	for _, device := range snapshot.PCI {
 		fmt.Fprintf(&b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), pciBARSummarySuffix(device), strings.Join(device.Capabilities, ","), device.Driver)
 	}
-	b.WriteString("\nNVIDIA GPUs\n")
+	b.WriteString(renderUnknownPCI(snapshot))
+	b.WriteString(renderUSB(snapshot))
+	return b.String()
+}
+
+// renderGPUs lists NVIDIA GPUs with NVML telemetry; passthrough devices stay
+// visible with an explicit status.
+func renderGPUs(snapshot model.Snapshot) string {
+	var b strings.Builder
+	if len(snapshot.GPUs) == 0 {
+		return ""
+	}
+	b.WriteString("NVIDIA GPUs\n")
 	for _, gpu := range snapshot.GPUs {
 		if gpu.PassedThrough {
 			fmt.Fprintf(&b, "  %-16s %s:%s %s PASSED THROUGH (%s); host NVML unavailable\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, gpu.NVMLStatus)
-		} else if gpu.NVML {
-			fmt.Fprintf(&b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
-			if len(gpu.MIGInstances) > 0 {
-				for _, mig := range gpu.MIGInstances {
-					fmt.Fprintf(&b, "    MIG instance %d profile %s gi %d mem %.1f/%.1f GiB util %.1f%%\n", mig.Index, mig.Profile, mig.GPUInstanceID, float64(mig.MemoryUsedBytes)/(1024*1024*1024), float64(mig.MemoryBytes)/(1024*1024*1024), mig.UtilizationPercent)
-				}
-			}
-			if gpu.NvLinkCount > 0 {
-				fmt.Fprintf(&b, "    NVLink version %s links %d nominal %d GB/s per link\n", gpu.NvLinkVersion, gpu.NvLinkCount, gpu.NvLinkBandwidthGBps)
-			}
-		} else {
+			continue
+		}
+		if !gpu.NVML {
 			fmt.Fprintf(&b, "  %-16s %s:%s NVML unavailable (%s)\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.NVMLStatus)
+			continue
+		}
+		fmt.Fprintf(&b, "  %-16s %s:%s %s NVML memory %.1f/%.1f GiB (%s; process %.1f GiB)  util %.1f%%  temp %.1fC  power %.1fW  ECC %t %d/%d  MIG %t max %d\n", gpu.Address, gpu.VendorID, gpu.DeviceID, gpu.Name, float64(gpu.MemoryUsedBytes)/(1024*1024*1024), float64(gpu.MemoryBytes)/(1024*1024*1024), gpu.MemorySource, float64(gpu.MemoryProcessBytes)/(1024*1024*1024), gpu.UtilizationPercent, gpu.TemperatureCelsius, gpu.PowerWatts, gpu.ECCEnabled, gpu.ECCCorrected, gpu.ECCUncorrected, gpu.MIGEnabled, gpu.MIGMaxInstances)
+		for _, mig := range gpu.MIGInstances {
+			fmt.Fprintf(&b, "    MIG instance %d profile %s gi %d mem %.1f/%.1f GiB util %.1f%%\n", mig.Index, mig.Profile, mig.GPUInstanceID, float64(mig.MemoryUsedBytes)/(1024*1024*1024), float64(mig.MemoryBytes)/(1024*1024*1024), mig.UtilizationPercent)
+		}
+		if gpu.NvLinkCount > 0 {
+			fmt.Fprintf(&b, "    NVLink version %s links %d nominal %d GB/s per link\n", gpu.NvLinkVersion, gpu.NvLinkCount, gpu.NvLinkBandwidthGBps)
 		}
 	}
-	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
-		b.WriteString("\nKVM/QEMU domains\n")
-		for _, vm := range snapshot.Virtualization.VirtualMachines {
-			segments := []string{fmt.Sprintf("%-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024))}
-			if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
-				segments = append(segments, fmt.Sprintf("huge/hugetlb %6.1f/%6.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))
-			}
-			if vm.QMPVersion != "" {
-				segments = append(segments, fmt.Sprintf("QMP %s base/plug %6.1f/%6.1f GiB", vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024)))
-			}
-			if len(vm.NUMANodes) > 0 {
-				segments = append(segments, fmt.Sprintf("NUMA %v", vm.NUMANodes))
-			}
-			fmt.Fprintf(&b, "  %s\n", strings.Join(segments, "  "))
-			if len(vm.QMPBlockDevices) > 0 {
-				fmt.Fprintf(&b, "    block I/O rd %.1f MiB/%d ops wr %.1f MiB/%d ops across %d device(s)\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps, len(vm.QMPBlockDevices))
-			}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderKVMDomains lists guest host-processes with runtime and QMP state.
+func renderKVMDomains(snapshot model.Snapshot) string {
+	if !snapshot.Virtualization.QEMUDetected && len(snapshot.Virtualization.VirtualMachines) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("KVM/QEMU domains\n")
+	for _, vm := range snapshot.Virtualization.VirtualMachines {
+		segments := []string{fmt.Sprintf("%-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024))}
+		if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
+			segments = append(segments, fmt.Sprintf("huge/hugetlb %6.1f/%6.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))
+		}
+		if vm.QMPVersion != "" {
+			segments = append(segments, fmt.Sprintf("QMP %s base/plug %6.1f/%6.1f GiB", vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024)))
+		}
+		if len(vm.NUMANodes) > 0 {
+			segments = append(segments, fmt.Sprintf("NUMA %v", vm.NUMANodes))
+		}
+		fmt.Fprintf(&b, "  %s\n", strings.Join(segments, "  "))
+		if len(vm.QMPBlockDevices) > 0 {
+			fmt.Fprintf(&b, "    block I/O rd %.1f MiB/%d ops wr %.1f MiB/%d ops across %d device(s)\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps, len(vm.QMPBlockDevices))
 		}
 	}
-	b.WriteString("\nMemory devices\n")
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderMemoryDevices lists DIMM inventory with EDAC counters.
+func renderMemoryDevices(snapshot model.Snapshot) string {
+	var b strings.Builder
+	b.WriteString("Memory devices\n")
+	if len(snapshot.MemoryDevices) == 0 {
+		b.WriteString("  No memory devices reported by SMBIOS/EDAC.\n")
+	}
 	for _, memory := range snapshot.MemoryDevices {
 		fmt.Fprintf(&b, "  %-16s %6.1f GiB %-12s %d MT/s configured %d  CE/UE %d/%d\n", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type, memory.SpeedMTs, memory.ConfiguredSpeedMTs, memory.CorrectedErrors, memory.UncorrectedErrors)
 	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderUnknownPCI lists unclaimed devices after the main PCIe table.
+func renderUnknownPCI(snapshot model.Snapshot) string {
+	var b strings.Builder
 	unknown := make([]model.PCIDevice, 0)
 	for _, device := range snapshot.PCI {
 		if isPCIUnknown(device) {
 			unknown = append(unknown, device)
 		}
 	}
-	b.WriteString("\nUnknown / unclaimed PCI devices\n")
+	b.WriteString("Unknown / unclaimed PCI devices\n")
 	if len(unknown) == 0 {
 		b.WriteString("  None; every device has a driver bound.\n")
 	}
 	for _, device := range unknown {
 		fmt.Fprintf(&b, "  %-16s %s:%s class %s vendor %s  no driver bound\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.VendorID)
 	}
-	b.WriteString("\nUSB devices\n")
+	b.WriteString("\n")
+	return b.String()
+}
+
+// renderUSB lists USB inventory and usbmon availability.
+func renderUSB(snapshot model.Snapshot) string {
+	var b strings.Builder
+	b.WriteString("USB devices\n")
 	if len(snapshot.USB) == 0 {
 		b.WriteString("  No USB devices reported.\n")
 	}

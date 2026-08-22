@@ -188,7 +188,7 @@ func TestCollectSystemReadsSelectedSysctls(t *testing.T) {
 	writeFixture(t, filepath.Join(proc, "sys/vm"), "dirty_background_ratio", "10\n")
 	writeFixture(t, filepath.Join(proc, "sys/kernel"), "nmi_watchdog", "1\n")
 	snapshot := model.Snapshot{}
-	if err := (&Collector{procRoot: proc, sysRoot: sys}).collectSystem(&snapshot, &rawCounters{}); err != nil {
+	if err := (&Collector{procRoot: proc, sysRoot: sys}).collectSystem(&snapshot, &rawCounters{}, true); err != nil {
 		t.Fatal(err)
 	}
 	if snapshot.System.Sysctls["vm.overcommit_memory"] != "2" || snapshot.System.Sysctls["vm.dirty_ratio"] != "25" {
@@ -444,6 +444,7 @@ func TestCollectTopProcessesRates(t *testing.T) {
 	writeFixture(t, filepath.Join(proc, "2"), "comm", "worker\n")
 	writeFixture(t, filepath.Join(proc, "2"), "stat", "2 (worker) S 1 2 2 0 -1 4194560 100 0 0 0 11 11 0 0 20 0 1 0 2 0 0\n")
 	writeFixture(t, filepath.Join(proc, "2"), "statm", "200 100 0 1 0 3 0\n")
+	writeFixture(t, filepath.Join(proc, "2"), "cmdline", "/usr/bin/worker\x00")
 	collector := &Collector{procRoot: proc}
 	raw := &rawCounters{processes: map[int]uint64{}}
 	snapshot := model.Snapshot{TopProcesses: []model.ProcessSample{}}
@@ -463,6 +464,17 @@ func TestCollectTopProcessesRates(t *testing.T) {
 	worker := snapshot.TopProcesses[0]
 	if worker.PID != 2 || worker.CPUPercent < 19 || worker.CPUPercent > 23 || worker.Name != "worker" || worker.State != "S" {
 		t.Fatalf("unexpected top consumer: %#v", worker)
+	}
+	// Cmdline is fetched lazily for the reported top processes only.
+	if worker.Cmdline == "" {
+		t.Fatal("cmdline missing from top process sample")
+	}
+	writeFixture(t, filepath.Join(proc, "2"), "cmdline", "/usr/bin/worker\x00--fast\x00")
+	if err := collector.collectTopProcesses(&snapshot, raw, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got := snapshot.TopProcesses[0].Cmdline; got != "/usr/bin/worker --fast" {
+		t.Fatalf("cmdline not normalized: %q", got)
 	}
 }
 

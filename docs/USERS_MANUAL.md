@@ -181,8 +181,11 @@ command lines and C/M/L change the sort on Processes; p toggles the cpufreq
 power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
-help; and q or Ctrl+C exits. Findings are color-coded by severity (critical,
-warning, info). The active tab is highlighted in the header, footer keys are
+help; and q or Ctrl+C exits. While the first collection is still running the
+dashboard shows a centered loading spinner instead of empty windows; the
+first snapshot replaces it with the Overview. Findings are color-coded by
+severity (critical, warning, info). The active tab is highlighted in the
+header, footer keys are
 bold with dim descriptions, and live readings such as temperatures, fan
 speeds, and power draw are shown as bold values in brackets. Each window keeps
 its own scroll position while you switch between them, and every window
@@ -289,6 +292,13 @@ a powersave governor advisory on virtualization hosts where the kernel also
 exposes performance, and collection errors.
 
 ### Hardware
+
+The window opens with a one-line inventory summary (PCI, GPU, DIMM, block
+device, NIC, and USB counts), then the sections in order: NVIDIA GPUs,
+KVM/QEMU domains, memory devices, the full PCIe device table, unknown or
+unclaimed PCI devices, and USB devices. The most operationally important
+sections therefore appear before the long PCIe list; every PCI device remains
+listed and expandable through the picker.
 
 PCI rows show address, vendor/device IDs, class, driver, NUMA node, current and
 maximum link speed/width, path minimum and bottleneck, BAR count/size plus
@@ -500,8 +510,9 @@ qmp_available is false when a VM has no QMP socket or its socket is
 unreachable; qmp_error records "QMP socket unavailable" when a configured
 socket cannot be queried, so the two cases are distinguishable.
 runtime_available is true when smaps_rollup/numa_maps data was read
-successfully. Because QMP and runtime-placement reads are throttled to every
-fifth snapshot, these fields reflect the most recent heavy collection.
+successfully. Because QMP, runtime-placement reads, NVML GPU telemetry, and
+kernel-event log scans are throttled to every fifth snapshot, these fields
+reflect the most recent heavy collection.
 
 VM nics include guest type/source/target/MAC, host bridge/NIC correlation,
 and host RX/TX rates when resolvable. VM PCI addresses identify attachments;

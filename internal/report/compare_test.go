@@ -104,3 +104,92 @@ func TestReadReportRoundTrip(t *testing.T) {
 		t.Fatalf("round trip mismatch: %#v", decoded)
 	}
 }
+
+func TestCompareGPUCategory(t *testing.T) {
+	older := model.Report{Snapshot: model.Snapshot{GPUs: []model.GPU{
+		{Address: "0000:01:00.0", Name: "A100", NVML: true, UtilizationPercent: 10, TemperatureCelsius: 50, PowerWatts: 100, MemoryUsedBytes: 1 << 30},
+	}}}
+	newer := model.Report{Snapshot: model.Snapshot{GPUs: []model.GPU{
+		{Address: "0000:01:00.0", Name: "A100", NVML: true, UtilizationPercent: 90, TemperatureCelsius: 70, PowerWatts: 250, MemoryUsedBytes: 8 << 30},
+		{Address: "0000:02:00.0", Name: "A100", NVML: false},
+	}}}
+	comparison := Compare(older, newer)
+	var gpus CategoryDelta
+	found := false
+	for _, category := range comparison.Categories {
+		if category.Name == "GPUs" {
+			gpus, found = category, true
+		}
+	}
+	if !found {
+		t.Fatal("GPU category missing")
+	}
+	if len(gpus.Values) != 4 {
+		t.Fatalf("expected 4 GPU value deltas, got %d", len(gpus.Values))
+	}
+	if !strings.Contains(gpus.Summary, "new GPU 0000:02:00.0") {
+		t.Fatalf("new GPU missing from summary: %q", gpus.Summary)
+	}
+
+	removed := older
+	removed.Snapshot.GPUs = []model.GPU{{Address: "0000:09:00.0", Name: "old"}}
+	summary := Compare(removed, newer)
+	for _, category := range summary.Categories {
+		if category.Name == "GPUs" && !strings.Contains(category.Summary, "no longer present") {
+			t.Fatalf("removed GPU missing: %q", category.Summary)
+		}
+	}
+}
+
+func TestCompareUSBCategory(t *testing.T) {
+	older := model.Report{Snapshot: model.Snapshot{USB: []model.USBDevice{
+		{BusID: "1-2", VendorID: "8087", ProductID: "0026", Product: "AX201"},
+	}}}
+	newer := model.Report{Snapshot: model.Snapshot{USB: []model.USBDevice{
+		{BusID: "1-2", VendorID: "8087", ProductID: "0026", Product: "AX201"},
+		{BusID: "2-1", VendorID: "0781", ProductID: "55ab", Product: "SanDisk"},
+	}}}
+	comparison := Compare(older, newer)
+	found := false
+	for _, category := range comparison.Categories {
+		if category.Name == "USB" {
+			found = true
+			if !strings.Contains(category.Summary, "new USB device 2-1 0781:55ab (SanDisk)") {
+				t.Fatalf("unexpected USB summary: %q", category.Summary)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("USB category missing")
+	}
+
+	unchanged := Compare(newer, newer)
+	for _, category := range unchanged.Categories {
+		if category.Name == "USB" {
+			t.Fatal("USB category emitted with no changes")
+		}
+	}
+}
+
+func TestCompareCpufreqCategory(t *testing.T) {
+	older := model.Report{Snapshot: model.Snapshot{CPUPower: []model.CPUPolicy{
+		{Policy: "policy0", Governor: "performance", EPP: "performance"},
+	}}}
+	newer := model.Report{Snapshot: model.Snapshot{CPUPower: []model.CPUPolicy{
+		{Policy: "policy0", Governor: "powersave", EPP: "power"},
+	}}}
+	comparison := Compare(older, newer)
+	found := false
+	for _, category := range comparison.Categories {
+		if category.Name == "CPU frequency policy" {
+			found = true
+			if !strings.Contains(category.Summary, "policy0 governor performance -> powersave") ||
+				!strings.Contains(category.Summary, "policy0 EPP performance -> power") {
+				t.Fatalf("cpufreq changes missing: %q", category.Summary)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("cpufreq category missing")
+	}
+}

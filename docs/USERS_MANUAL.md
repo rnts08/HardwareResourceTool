@@ -158,9 +158,10 @@ compare OLDER.json NEWER.json reads two captures written by `report --json`
 and writes a before/after diff: findings that appeared or cleared between the
 captures, rate deltas per category (CPU, memory, kernel events,
 virtualization overcommit, per-disk and per-network throughput, thermal-zone
-temperatures), and newly added or removed disks and networks. Rows with no
-observable change are omitted. compare --json emits the same diff as JSON and
-does not require root.
+temperatures, per-GPU utilization/temperature/power/framebuffer), newly added
+or removed disks, networks, GPUs, and USB devices, and cpufreq governor or
+EPP changes per policy. Rows with no observable change are omitted.
+compare --json emits the same diff as JSON and does not require root.
 
 ### version
 
@@ -282,7 +283,10 @@ filesystem capacity, NIC errors/drops, PCIe negotiation/path/AER issues,
 IOMMU-group sharing and cross-NUMA groups, whole-path PCI/bridge NUMA
 mismatch, unbound endpoints, passthrough-device NUMA mismatch, VM CPU/memory
 overcommit, cgroup pressure, paused QEMU domains, invalid VM NUMA nodesets,
-THP and selected sysctl observations, and collection errors.
+THP and selected sysctl observations, thermal sensors near or above their
+critical threshold and active alarms, stalled fans, an exhausted hugetlb pool,
+a powersave governor advisory on virtualization hosts where the kernel also
+exposes performance, and collection errors.
 
 ### Hardware
 
@@ -572,7 +576,17 @@ Do not infer that a finding authorizes a specific sysctl, ethtool, numactl,
 Proxmox, libvirt, or QMP command. Such changes can affect guests,
 availability, migration, latency, and data integrity.
 
-## 8. Current limitations
+## 8. Current limitations and non-goals for v1
 
-Not yet implemented are Redfish/BMC inventory and broad vendor-specific
-validation captures. Use platform-native sources when a field is unavailable.
+The following are deliberate non-goals for version 1; they may be revisited
+after the first stable release:
+
+- Redfish/BMC inventory and broad vendor-specific validation captures.
+- Per-feature NIC offload names and full ethtool statistic-counter dumps;
+  feature counts, channels, coalescing, pause, RSS, and timestamping state
+  are collected today, individual offload toggle names are not.
+- Process-wide policy aggregation beyond `/proc/1/limits`.
+- Deeper PCIe reasoning such as automated BAR placement analysis and PF/VF
+  topology findings beyond what is reported per device.
+
+Use platform-native sources when a field is unavailable.

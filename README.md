@@ -308,8 +308,9 @@ sudo ./hardware-resources compare before.json after.json
 
 The comparison lists new and cleared findings, per-category rate deltas (CPU,
 memory, kernel events, virtualization overcommit, per-disk and per-network
-throughput, thermal-zone temperatures), and newly added or removed resources.
-`compare --json` emits the same diff machine-readably.
+throughput, thermal-zone temperatures, per-GPU telemetry), newly added or
+removed disks, networks, GPUs, and USB devices, and cpufreq governor/EPP
+changes. `compare --json` emits the same diff machine-readably.
 
 ## Safety and limitations
 

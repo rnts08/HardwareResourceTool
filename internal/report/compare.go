@@ -63,6 +63,15 @@ func Compare(older, newer model.Report) Comparison {
 	if thermal := thermalCategory(olderS, newerS); len(thermal.Values) > 0 || thermal.Summary != "" {
 		comparison.Categories = append(comparison.Categories, thermal)
 	}
+	if gpus := gpuCategory(olderS, newerS); len(gpus.Values) > 0 || gpus.Summary != "" {
+		comparison.Categories = append(comparison.Categories, gpus)
+	}
+	if usb := usbCategory(olderS, newerS); usb.Summary != "" {
+		comparison.Categories = append(comparison.Categories, usb)
+	}
+	if cpufreq := cpufreqCategory(olderS, newerS); cpufreq.Summary != "" {
+		comparison.Categories = append(comparison.Categories, cpufreq)
+	}
 	return comparison
 }
 
@@ -200,6 +209,111 @@ func thermalCategory(older, newer model.Snapshot) CategoryDelta {
 
 func bytesGiB(bytes uint64) float64 {
 	return float64(bytes) / (1024 * 1024 * 1024)
+}
+
+// gpuCategory diffs per-GPU telemetry by PCI address and reports GPUs that
+// appeared or disappeared between captures. Hosts without NVML on either
+// side contribute no values.
+func gpuCategory(older, newer model.Snapshot) CategoryDelta {
+	delta := CategoryDelta{Name: "GPUs"}
+	oldGPUs := make(map[string]model.GPU)
+	for _, gpu := range older.GPUs {
+		oldGPUs[gpu.Address] = gpu
+	}
+	newGPUs := make(map[string]model.GPU)
+	for _, gpu := range newer.GPUs {
+		newGPUs[gpu.Address] = gpu
+	}
+	for _, gpu := range newer.GPUs {
+		previous, ok := oldGPUs[gpu.Address]
+		if !ok {
+			delta.Summary = appendSummary(delta.Summary, fmt.Sprintf("new GPU %s (%s)", gpu.Address, orNone(gpu.Name)))
+			continue
+		}
+		if !previous.NVML && !gpu.NVML {
+			continue
+		}
+		delta.Values = append(delta.Values,
+			ValueDelta{Name: gpu.Address + " util", Old: previous.UtilizationPercent, New: gpu.UtilizationPercent, Unit: "%"},
+			ValueDelta{Name: gpu.Address + " temp", Old: previous.TemperatureCelsius, New: gpu.TemperatureCelsius, Unit: "C"},
+			ValueDelta{Name: gpu.Address + " power", Old: previous.PowerWatts, New: gpu.PowerWatts, Unit: "W"},
+			ValueDelta{Name: gpu.Address + " fb used", Old: bytesGiB(previous.MemoryUsedBytes), New: bytesGiB(gpu.MemoryUsedBytes), Unit: "GiB"},
+		)
+	}
+	for _, gpu := range older.GPUs {
+		if _, ok := newGPUs[gpu.Address]; !ok {
+			delta.Summary = appendSummary(delta.Summary, fmt.Sprintf("GPU %s no longer present (%s)", gpu.Address, orNone(gpu.Name)))
+		}
+	}
+	return delta
+}
+
+// usbCategory reports USB devices that appeared or disappeared between
+// captures. Speeds are not diffed because they change with negotiation.
+func usbCategory(older, newer model.Snapshot) CategoryDelta {
+	delta := CategoryDelta{Name: "USB"}
+	key := func(device model.USBDevice) string {
+		return device.BusID + " " + device.VendorID + ":" + device.ProductID + " " + usbLabel(device)
+	}
+	oldDevices := make(map[string]bool)
+	for _, device := range older.USB {
+		oldDevices[key(device)] = true
+	}
+	newDevices := make(map[string]bool)
+	for _, device := range newer.USB {
+		newDevices[key(device)] = true
+	}
+	for _, device := range newer.USB {
+		id := key(device)
+		if !oldDevices[id] {
+			delta.Summary = appendSummary(delta.Summary, "new USB device "+id)
+		}
+	}
+	for _, device := range older.USB {
+		id := key(device)
+		if !newDevices[id] {
+			delta.Summary = appendSummary(delta.Summary, "USB device no longer present: "+id)
+		}
+	}
+	return delta
+}
+
+func usbLabel(device model.USBDevice) string {
+	if device.Product != "" {
+		return "(" + device.Product + ")"
+	}
+	return "(unknown device)"
+}
+
+// cpufreqCategory reports governor and EPP changes per policy so power-policy
+// drift between captures is visible.
+func cpufreqCategory(older, newer model.Snapshot) CategoryDelta {
+	delta := CategoryDelta{Name: "CPU frequency policy"}
+	oldPolicies := make(map[string]model.CPUPolicy)
+	for _, policy := range older.CPUPower {
+		oldPolicies[policy.Policy] = policy
+	}
+	for _, policy := range newer.CPUPower {
+		previous, ok := oldPolicies[policy.Policy]
+		if !ok {
+			continue
+		}
+		if previous.Governor != policy.Governor {
+			delta.Summary = appendSummary(delta.Summary, fmt.Sprintf("%s governor %s -> %s", policy.Policy, orNone(previous.Governor), orNone(policy.Governor)))
+		}
+		if previous.EPP != policy.EPP {
+			delta.Summary = appendSummary(delta.Summary, fmt.Sprintf("%s EPP %s -> %s", policy.Policy, orNone(previous.EPP), orNone(policy.EPP)))
+		}
+	}
+	return delta
+}
+
+// orNone renders an empty value as (none) for comparison summaries.
+func orNone(value string) string {
+	if value == "" {
+		return "(none)"
+	}
+	return value
 }
 
 func bytesPerSecMiB(bytesPerSecond float64) float64 {

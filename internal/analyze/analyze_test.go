@@ -1,6 +1,7 @@
 package analyze
 
 import (
+	"strings"
 	"testing"
 
 	"hardware-resources-tool/internal/model"
@@ -164,5 +165,48 @@ func TestHugetlbPoolExhaustedFinding(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected hugetlb-pool finding, got %#v", findings)
+	}
+}
+
+func TestGovernorAdvisoryOnVirtualizationHost(t *testing.T) {
+	snapshot := model.Snapshot{
+		Virtualization: model.Virtualization{QEMUDetected: true},
+		CPUPower: []model.CPUPolicy{
+			{Policy: "policy0", CPUs: "0-7", Governor: "powersave", AvailableGovernors: []string{"performance", "powersave"}},
+		},
+	}
+	findings := Findings(snapshot)
+	found := false
+	for _, finding := range findings {
+		if finding.Title == "CPU governor is powersave while performance is available" {
+			if finding.Severity != "info" {
+				t.Fatalf("unexpected severity %q", finding.Severity)
+			}
+			if !strings.Contains(finding.Evidence, "policy0 cpus 0-7") {
+				t.Fatalf("evidence missing policy detail: %q", finding.Evidence)
+			}
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("governor advisory missing on virtualization host")
+	}
+
+	// Non-virtualization hosts stay silent.
+	bare := snapshot
+	bare.Virtualization = model.Virtualization{}
+	for _, finding := range Findings(bare) {
+		if strings.Contains(finding.Title, "governor is powersave") {
+			t.Fatal("advisory emitted without virtualization")
+		}
+	}
+
+	// Deliberate performance configuration stays silent.
+	performance := snapshot
+	performance.CPUPower = []model.CPUPolicy{{Policy: "policy0", Governor: "performance"}}
+	for _, finding := range Findings(performance) {
+		if strings.Contains(finding.Title, "governor is powersave") {
+			t.Fatal("advisory emitted with performance governor")
+		}
 	}
 }

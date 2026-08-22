@@ -253,7 +253,66 @@ func FindingsWithThresholds(s model.Snapshot, thresholds Thresholds) []model.Fin
 			findings = append(findings, model.Finding{Severity: "warning", Category: "memory", Title: "Host hugetlb pool has no free pages", Evidence: fmt.Sprintf("all %d hugepages are in use while running VMs %v depend on hugetlb memory", s.Memory.HugepagesTotal, hugepageBacked), Recommendation: "Plan headroom before starting or ballooning up hugepage-backed guests; with zero free pages new allocations fall back or fail."})
 		}
 	}
+	findings = appendCPUGovernorFinding(findings, s)
 	return findings
+}
+
+// appendCPUGovernorFinding advises when a virtualization host runs the
+// powersave governor while the kernel also exposes performance. Powersave
+// with EPP can be a deliberate choice, so this stays informational.
+func appendCPUGovernorFinding(findings []model.Finding, s model.Snapshot) []model.Finding {
+	if !s.Virtualization.QEMUDetected && !s.Virtualization.KVMAvailable {
+		return findings
+	}
+	policies := make([]string, 0, len(s.CPUPower))
+	for _, policy := range s.CPUPower {
+		if policy.Governor != "powersave" {
+			continue
+		}
+		performanceAvailable := false
+		for _, candidate := range policy.AvailableGovernors {
+			if candidate == "performance" {
+				performanceAvailable = true
+				break
+			}
+		}
+		if performanceAvailable {
+			entry := fmt.Sprintf("%s cpus %s", policy.Policy, orUnknown(policy.CPUs))
+			if len(policies) < 3 {
+				policies = append(policies, entry)
+			}
+		}
+	}
+	if len(policies) == 0 {
+		return findings
+	}
+	total := 0
+	for _, policy := range s.CPUPower {
+		if policy.Governor == "powersave" {
+			total++
+		}
+	}
+	evidence := strings.Join(policies, "; ")
+	if total > len(policies) {
+		evidence = fmt.Sprintf("%d policies in powersave with performance available, including %s", total, evidence)
+	} else {
+		evidence = fmt.Sprintf("%s run the powersave governor while the kernel exposes performance", evidence)
+	}
+	return append(findings, model.Finding{
+		Severity:       "info",
+		Category:       "cpu",
+		Title:          "CPU governor is powersave while performance is available",
+		Evidence:       evidence,
+		Recommendation: "Confirm the choice is deliberate; for latency-sensitive hosts consider switching to the performance governor via scaling_governor, and review energy_performance_preference. The TUI power advisor on CPU/Memory lists the exact commands.",
+	})
+}
+
+// orUnknown renders an empty CPU list as unknown.
+func orUnknown(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }
 
 // formatBytesForFindings renders byte counts in human units for evidence text.

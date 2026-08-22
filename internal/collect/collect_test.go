@@ -48,6 +48,37 @@ func TestCollectMemoryReadsVMStat(t *testing.T) {
 	}
 }
 
+// TestCollectMemoryHugepageCountsAreNotScaled is a regression for meminfo
+// parsing that multiplied every value by 1024. HugePages_Total/Free are bare
+// page counts without a kB unit, so a host reserving 20 pages must report
+// total=20 (not 20480) while byte-sized entries keep their kB scaling.
+func TestCollectMemoryHugepageCountsAreNotScaled(t *testing.T) {
+	proc := t.TempDir()
+	writeFixture(t, proc, "meminfo", ""+
+		"MemTotal:          16384000 kB\n"+
+		"MemAvailable:       8192000 kB\n"+
+		"HugePages_Total:          20\n"+
+		"HugePages_Free:           12\n"+
+		"Hugepagesize:           2048 kB\n"+
+		"Hugetlb:            16384 kB\n")
+	snapshot := model.Snapshot{}
+	if err := (&Collector{procRoot: proc}).collectMemory(&snapshot, &rawCounters{}); err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Memory.HugepagesTotal != 20 || snapshot.Memory.HugepagesFree != 12 {
+		t.Fatalf("hugepage counts scaled incorrectly: %#v", snapshot.Memory)
+	}
+	if snapshot.Memory.HugepageSizeBytes != 2048*1024 {
+		t.Fatalf("hugepage size not scaled: %d", snapshot.Memory.HugepageSizeBytes)
+	}
+	if snapshot.Memory.HugetlbUsedBytes != 16384*1024 {
+		t.Fatalf("hugetlb bytes not scaled: %d", snapshot.Memory.HugetlbUsedBytes)
+	}
+	if snapshot.Memory.TotalBytes != 16384000*1024 {
+		t.Fatalf("total bytes wrong: %d", snapshot.Memory.TotalBytes)
+	}
+}
+
 func TestCollectNetworkMetadata(t *testing.T) {
 	sys := t.TempDir()
 	base := filepath.Join(sys, "class/net/eth0")
@@ -507,5 +538,49 @@ func TestCollectNodeHugepages(t *testing.T) {
 	entry := result[0]
 	if entry.Node != 1 || entry.SizeBytes != 2048*1024 || entry.Total != 16 || entry.Free != 4 {
 		t.Errorf("unexpected node hugepage entry: %#v", entry)
+	}
+}
+
+// TestReadLimitsDoesNotScaleByteValues is a regression for limits parsing that
+// multiplied "Max locked memory" and "Max stack size" by 1024. /proc/*/limits
+// reports those in bytes (the Units column says so), so an 8 MiB lock limit
+// was rendered as 8 GiB.
+func TestReadLimitsDoesNotScaleByteValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "limits")
+	content := "" +
+		"Limit                     Soft Limit           Hard Limit           Units\n" +
+		"Max open files            524288               1048576              files\n" +
+		"Max locked memory         8388608              8388608              bytes\n" +
+		"Max processes             60838                60838                processes\n" +
+		"Max stack size            8388608              unlimited            bytes\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	limits, err := readLimits(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limits.OpenFiles != 524288 || limits.MaxProcesses != 60838 {
+		t.Fatalf("count limits wrong: %#v", limits)
+	}
+	if limits.MaxLocked != 8388608 || limits.MaxStack != 8388608 {
+		t.Fatalf("byte limits scaled incorrectly: %#v", limits)
+	}
+}
+
+func TestReadLimitsUnlimitedAndShortLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "limits")
+	content := "" +
+		"Max open files            unlimited            unlimited            files\n" +
+		"Max stack size            8388608\n"
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	limits, err := readLimits(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if limits.OpenFiles != 0 || limits.MaxStack != 8388608 {
+		t.Fatalf("unexpected limits: %#v", limits)
 	}
 }

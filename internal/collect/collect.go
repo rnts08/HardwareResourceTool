@@ -215,7 +215,13 @@ func (c *Collector) collectMemory(s *model.Snapshot, raw *rawCounters) error {
 		if len(parts) >= 2 {
 			value, parseErr := parseUint(parts[1])
 			if parseErr == nil {
-				values[strings.TrimSuffix(parts[0], ":")] = value * 1024
+				// Most meminfo entries carry an explicit kB unit, but the
+				// HugePages_* counters are bare page counts; only scale
+				// entries that actually declare the unit.
+				if len(parts) >= 3 && parts[2] == "kB" {
+					value *= 1024
+				}
+				values[strings.TrimSuffix(parts[0], ":")] = value
 			}
 		}
 	}
@@ -655,11 +661,12 @@ func readLimits(path string) (model.Limits, error) {
 		case strings.HasPrefix(line, "Max open files"):
 			limits.OpenFiles = value
 		case strings.HasPrefix(line, "Max locked memory"):
-			limits.MaxLocked = value * 1024
+			// /proc/*/limits reports these in bytes already; no unit scaling.
+			limits.MaxLocked = value
 		case strings.HasPrefix(line, "Max processes"):
 			limits.MaxProcesses = value
 		case strings.HasPrefix(line, "Max stack size"):
-			limits.MaxStack = value * 1024
+			limits.MaxStack = value
 		}
 	}
 	return limits, nil

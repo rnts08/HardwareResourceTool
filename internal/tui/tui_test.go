@@ -811,3 +811,34 @@ func tailOf(s string, n int) string {
 	}
 	return s[len(s)-n:]
 }
+
+func TestScrollBadgeIndicatesRemainingContent(t *testing.T) {
+	newDetail := func(lines int) modelState {
+		return modelState{height: 12, width: 100, thresholds: analyze.DefaultThresholds,
+			detailMode: true, detailTitle: "VM test", detailLines: make([]string, lines)}
+	}
+	// Top of a long page: only downward remains.
+	m := newDetail(40)
+	view := stripANSI(m.View())
+	if !contains(view, "[more ↓]") || contains(view, "[more ↑") {
+		t.Fatalf("top-of-page badge wrong:\n%s", view[:400])
+	}
+	// Jump to the bottom: only upward remains.
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	bottom := stripANSI(updated.(modelState).View())
+	if !contains(bottom, "[more ↑]") || contains(bottom, "[more ↓]") {
+		t.Fatalf("bottom-of-page badge wrong:\n%s", bottom[:400])
+	}
+	// Mid-document: both arrows.
+	mid := newDetail(40)
+	mid.offset = 15
+	view = stripANSI(mid.View())
+	if !contains(view, "[more ↑↓]") {
+		t.Fatalf("mid-page badge missing both arrows:\n%s", view[:400])
+	}
+	// Content that fits shows no badge.
+	fits := stripANSI(newDetail(3).View())
+	if contains(fits, "[more") {
+		t.Fatalf("badge shown for fitting content:\n%s", fits[:300])
+	}
+}

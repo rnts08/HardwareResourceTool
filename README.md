@@ -219,6 +219,8 @@ for its sparklines. Use:
 - On CPU/Memory: `p` toggles the cpufreq power advisor, which shows current
   and available governors/EPP with the exact commands to change them. The
   tool never executes these commands.
+- A `[more ↓]` / `[more ↑]` / `[more ↑↓]` badge on the status line shows
+  when unviewed rows remain above or below the viewport.
 - Mouse wheel scrolls the active view; clicking a tab header row switches
   views.
 - `Space` pauses and resumes live collection.

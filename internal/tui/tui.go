@@ -360,6 +360,36 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// scrollBadge returns a marker describing content beyond the viewport:
+// a down arrow when more lies below, an up arrow when more lies above,
+// both while scrolled mid-document, empty when the page fits.
+func (m modelState) scrollBadge(content string, footerLines int) string {
+	if m.width <= 0 || m.height <= 0 {
+		return ""
+	}
+	contentLines := len(splitLines(content))
+	headerLines := 6 // title, separator, tab bar, blank, status, blank
+	avail := m.height - headerLines - footerLines
+	if avail < 1 {
+		avail = 1
+	}
+	maxOffset := contentLines - avail
+	moreAbove := m.offset > 0
+	moreBelow := m.offset < maxOffset
+	var inner string
+	switch {
+	case moreAbove && moreBelow:
+		inner = "more ↑↓"
+	case moreBelow:
+		inner = "more ↓"
+	case moreAbove:
+		inner = "more ↑"
+	default:
+		return ""
+	}
+	return dimStyle.Render("[") + warningStyle.Render(inner) + dimStyle.Render("]")
+}
+
 // loadingView renders the first-run screen while the initial collection is
 // still in flight: a centered spinner with progress detail instead of empty
 // windows.
@@ -431,37 +461,8 @@ func (m modelState) View() string {
 	if m.showHelp {
 		return renderScrolled("", renderHelp(m.thresholds), "", m.width, m.height, 0, 0)
 	}
-	var header strings.Builder
-	header.WriteString(titleStyle.Render("Hardware Resources — live host view") + "\n")
-	header.WriteString(dimStyle.Render(strings.Repeat("─", 80)) + "\n")
-	tokens := make([]string, len(tabs))
-	for i := range tabs {
-		tokens[i] = tabToken(i, i == m.tab)
-	}
-	header.WriteString(renderTabBar(tokens, m.tab) + "\n")
-	status := fmt.Sprintf("Samples: %d/%d  Updated: %s  interval %s", len(m.history), historyLimit, updatedAt(m.snapshot), m.interval)
-	if m.collecting {
-		status += "  " + infoStyle.Render("collecting…")
-	}
-	if m.paused {
-		status += "  " + warningStyle.Render("[paused]")
-	}
-	if m.collectTime > 0 {
-		status += fmt.Sprintf("  last collect %s", m.collectTime.Round(time.Millisecond))
-	}
-	header.WriteString("\n" + status + "\n\n")
-
-	content := m.tabContent()
-	if m.findingsMode {
-		content = viewFindings(m.findings)
-	}
-	if m.pickerMode {
-		content = m.pickerContent()
-	}
-	if m.detailMode {
-		content = m.detailTitle + "\n" + strings.Join(m.detailLines, "\n") + "\n"
-	}
-
+	// The footer is assembled first because the scroll badge on the status
+	// line depends on how many rows the footer occupies.
 	var footer strings.Builder
 	if m.err != nil {
 		fmt.Fprintf(&footer, "Error: %v\n", m.err)
@@ -488,6 +489,44 @@ func (m modelState) View() string {
 			{"r", "refresh"}, {"?", "help"}, {"q", "quit"},
 		}))
 	}
+
+	content := m.tabContent()
+	if m.findingsMode {
+		content = viewFindings(m.findings)
+	}
+	if m.pickerMode {
+		content = m.pickerContent()
+	}
+	if m.detailMode {
+		content = m.detailTitle + "\n" + strings.Join(m.detailLines, "\n") + "\n"
+	}
+
+	badge := m.scrollBadge(content, len(splitLines(footer.String())))
+
+	var header strings.Builder
+	header.WriteString(titleStyle.Render("Hardware Resources — live host view") + "\n")
+	header.WriteString(dimStyle.Render(strings.Repeat("─", 80)) + "\n")
+	tokens := make([]string, len(tabs))
+	for i := range tabs {
+		tokens[i] = tabToken(i, i == m.tab)
+	}
+	header.WriteString(renderTabBar(tokens, m.tab) + "\n")
+	status := fmt.Sprintf("Samples: %d/%d  Updated: %s  interval %s", len(m.history), historyLimit, updatedAt(m.snapshot), m.interval)
+	if m.collecting {
+		status += "  " + infoStyle.Render("collecting…")
+	}
+	if m.paused {
+		status += "  " + warningStyle.Render("[paused]")
+	}
+	if m.collectTime > 0 {
+		status += fmt.Sprintf("  last collect %s", m.collectTime.Round(time.Millisecond))
+	}
+	if badge != "" {
+		if gap := m.width - lipgloss.Width(status) - lipgloss.Width(badge); gap > 2 {
+			status += strings.Repeat(" ", gap) + badge
+		}
+	}
+	header.WriteString("\n" + status + "\n\n")
 
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
 }

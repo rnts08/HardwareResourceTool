@@ -181,6 +181,9 @@ and Enter expands it directly; f toggles the findings view; c toggles full
 command lines and C/M/L change the sort on Processes; p toggles the cpufreq
 power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
+While a window holds more content than the viewport, the status line shows
+a right-aligned [more ↓], [more ↑], or [more ↑↓] badge so it is obvious when
+scrolling (j/k, Page Up/Down, g/G) will reveal additional rows.
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
 help; and q or Ctrl+C exits. While the first collection is still running the
 dashboard shows a centered loading spinner instead of empty windows; the

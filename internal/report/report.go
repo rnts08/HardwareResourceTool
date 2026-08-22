@@ -176,6 +176,9 @@ func WriteText(w io.Writer, result model.Report) error {
 	if result.Snapshot.VirtualNetworkCount > 0 {
 		fmt.Fprintf(w, "Virtual/device-less network interfaces filtered: %d\n", result.Snapshot.VirtualNetworkCount)
 	}
+	// Inventory summary introduces the physical-hardware block that follows:
+	// PCIe details, GPUs, then USB.
+	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices, %d USB devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices), len(result.Snapshot.USB))
 	for _, device := range result.Snapshot.PCI {
 		if len(device.Capabilities) > 0 || device.AERUncorrectableStatus != 0 || device.AERCorrectableStatus != 0 || device.PCIePathBottleneck != "" {
 			fmt.Fprintf(w, "PCIe: %s capabilities %v, link %s x%d negotiated %s x%d, path minimum %s x%d @%s, BARs %d/%s%s, PF %s, VFs %v, payload %d/%d bytes, AER UE 0x%08x CE 0x%08x\n", device.Address, device.Capabilities, device.PCIeCapabilityMaxSpeed, device.PCIeCapabilityMaxWidth, device.PCIeNegotiatedSpeed, device.PCIeNegotiatedWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, humanBytes(device.BARTotalBytes), pciBARReportSuffix(device), device.PCIePFAddress, device.PCIeVFAddresses, device.PCIeMaxPayloadBytes, device.PCIeMaxReadRequestBytes, device.AERUncorrectableStatus, device.AERCorrectableStatus)
@@ -203,7 +206,6 @@ func WriteText(w io.Writer, result model.Report) error {
 			fmt.Fprintf(w, "GPU: %s NVML unavailable (%s)\n", gpu.Address, gpu.NVMLStatus)
 		}
 	}
-	fmt.Fprintf(w, "Hardware: %d PCI devices, %d NVIDIA GPUs, %d memory devices\n", len(result.Snapshot.PCI), len(result.Snapshot.GPUs), len(result.Snapshot.MemoryDevices))
 	for _, usb := range result.Snapshot.USB {
 		desc := usb.Product
 		if desc == "" {

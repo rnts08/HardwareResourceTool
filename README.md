@@ -220,7 +220,11 @@ for its sparklines. Use:
   and available governors/EPP with the exact commands to change them. The
   tool never executes these commands.
 - A `[more ↓]` / `[more ↑]` / `[more ↑↓]` badge on the status line shows
-  when unviewed rows remain above or below the viewport.
+  when unviewed rows remain above or below the viewport. Until the first
+  snapshot lands, a centered loading spinner replaces empty windows.
+- Values are colored by state throughout: green normal/up/running, yellow
+  warnings and powersave governor, red critical/down/exhausted thresholds,
+  bright yellow unknown or dormant.
 - Mouse wheel scrolls the active view; clicking a tab header row switches
   views.
 - `Space` pauses and resumes live collection.

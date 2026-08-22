@@ -1,6 +1,6 @@
 # Hardware Resources Tool User Manual
 
-This manual describes release 0.24.0. Hardware Resources Tool is a read-only
+This manual describes release 0.30.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -434,7 +434,8 @@ reported as `none detected` when KVM/QEMU is present but unidentified), limits,
 passthrough devices under the virtualization section,
 sorted sysctls, real filesystems, physical networks (unknown FEC/RSS render as
 `-`), PCIe devices with useful data, GPUs, USB devices with truncated serials
-and usbmon availability, inventory totals, findings, and the collector-error
+and usbmon availability, a hardware inventory summary line that introduces
+the PCIe/GPU/USB block, findings, and the collector-error
 count with each error listed individually. Zero-valued optional fields (QMP,
 balloon, hugepage, and NUMA segments on VM lines, missing thermal limits,
 host/init limits) are omitted rather than printed as zeros. It is intended for operators

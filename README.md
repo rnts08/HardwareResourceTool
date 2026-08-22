@@ -153,7 +153,9 @@ sudo ./hardware-resources-linux-amd64 tui
 Commands:
 
 - `check` performs a one-second two-sample check and writes a human-readable
-  report with findings.
+  report with findings. It ends with a `Result:` summary line and exits 0 on
+  pass, 1 with warning findings, 2 with critical findings, and 3 when
+  collector errors make the capture incomplete (`--no-fail` always exits 0).
 - `report` performs a configurable two-sample collection and writes text by
   default or JSON with `--json`.
 - `tui` starts the live terminal dashboard.

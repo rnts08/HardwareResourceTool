@@ -106,3 +106,37 @@ func TestReadDMInfo(t *testing.T) {
 		t.Fatalf("unexpected slaves: %+v", disk.Slaves)
 	}
 }
+
+// TestReadUSBDevicesLowSpeedFractional is a regression for SpeedMbps being an
+// int64: sysfs reports low-speed devices as "1.5" which truncated to 1.
+func TestReadUSBDevicesLowSpeedFractional(t *testing.T) {
+	dir := t.TempDir()
+	base := filepath.Join(dir, "1-3")
+	if err := os.MkdirAll(base, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for file, content := range map[string]string{
+		"idVendor":  "046d",
+		"idProduct": "c52b",
+		"speed":     "1.5",
+		"product":   "USB Receiver",
+	} {
+		if err := os.WriteFile(filepath.Join(base, file), []byte(content+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	devices := readUSBDevices(dir)
+	if len(devices) != 1 {
+		t.Fatalf("expected 1 device, got %d", len(devices))
+	}
+	if devices[0].SpeedMbps != 1.5 {
+		t.Fatalf("low-speed value truncated: %v", devices[0].SpeedMbps)
+	}
+	if got := devices[0].SpeedString(); got != "1.5 Mb/s" {
+		t.Fatalf("SpeedString = %q", got)
+	}
+	full := model.USBDevice{SpeedMbps: 480}
+	if got := full.SpeedString(); got != "480 Mb/s" {
+		t.Fatalf("whole-number SpeedString = %q", got)
+	}
+}

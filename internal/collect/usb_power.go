@@ -49,7 +49,7 @@ func readUSBDevices(dir string) []model.USBDevice {
 		device.Class = readSysString(base, "bDeviceClass")
 		if speed := readSysString(base, "speed"); speed != "" {
 			if mbps, parseErr := strconv.ParseFloat(speed, 64); parseErr == nil {
-				device.SpeedMbps = int64(mbps)
+				device.SpeedMbps = mbps
 			}
 		}
 		if device.VendorID == "" && device.ProductID == "" && device.Product == "" {

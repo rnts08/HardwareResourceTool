@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
@@ -34,14 +35,23 @@ type Snapshot struct {
 // USBDevice describes one USB device from sysfs (interface directories and
 // root hubs are excluded).
 type USBDevice struct {
-	BusID        string `json:"bus_id"`
-	VendorID     string `json:"vendor_id"`
-	ProductID    string `json:"product_id"`
-	Manufacturer string `json:"manufacturer,omitempty"`
-	Product      string `json:"product,omitempty"`
-	Serial       string `json:"serial,omitempty"`
-	SpeedMbps    int64  `json:"speed_mbps,omitempty"`
-	Class        string `json:"class,omitempty"`
+	BusID        string  `json:"bus_id"`
+	VendorID     string  `json:"vendor_id"`
+	ProductID    string  `json:"product_id"`
+	Manufacturer string  `json:"manufacturer,omitempty"`
+	Product      string  `json:"product,omitempty"`
+	Serial       string  `json:"serial,omitempty"`
+	SpeedMbps    float64 `json:"speed_mbps,omitempty"`
+	Class        string  `json:"class,omitempty"`
+}
+
+// SpeedString renders the device speed without a trailing ".0" for whole
+// megabit rates while preserving fractional low-speed values such as 1.5.
+func (u USBDevice) SpeedString() string {
+	if u.SpeedMbps == math.Trunc(u.SpeedMbps) {
+		return fmt.Sprintf("%.0f Mb/s", u.SpeedMbps)
+	}
+	return fmt.Sprintf("%g Mb/s", u.SpeedMbps)
 }
 
 // CPUPolicy describes one cpufreq policy directory and its tunables.

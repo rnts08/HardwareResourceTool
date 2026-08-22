@@ -1203,7 +1203,7 @@ func viewHardware(snapshot model.Snapshot) string {
 		}
 		fmt.Fprintf(&b, "  %-8s %s:%s  %s", usb.BusID, usb.VendorID, usb.ProductID, desc)
 		if usb.SpeedMbps > 0 {
-			fmt.Fprintf(&b, "  %d Mb/s", usb.SpeedMbps)
+			fmt.Fprintf(&b, "  %s", usb.SpeedString())
 		}
 		if usb.Serial != "" {
 			fmt.Fprintf(&b, "  sn %s", usb.Serial)

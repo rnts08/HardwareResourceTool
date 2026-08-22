@@ -119,6 +119,20 @@ report. It supports these finding thresholds:
 
 Thresholds affect findings only; they do not alter collection or host policy.
 
+check ends with a `Result:` summary line and exits with a status scripts can
+act on:
+
+| Exit code | Status | Condition |
+| --- | --- | --- |
+| 0 | PASS | no warning or critical findings, no collector errors |
+| 1 | WARNING | at least one warning-severity finding |
+| 2 | CRITICAL | at least one critical-severity finding |
+| 3 | COLLECTION ERRORS | collector errors present, capture may be incomplete |
+
+Precedence is 3 > 2 > 1 > 0: an incomplete capture outranks any finding
+because the data cannot be trusted. Pass --no-fail to always exit 0, for
+example when piping output into another command.
+
 ### report
 
 report takes an initial sample, waits for --duration, takes a final sample,

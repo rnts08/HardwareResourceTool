@@ -209,7 +209,7 @@ func WriteText(w io.Writer, result model.Report) error {
 			line += " (" + usb.Manufacturer + ")"
 		}
 		if usb.SpeedMbps > 0 {
-			line += fmt.Sprintf(" %d Mb/s", usb.SpeedMbps)
+			line += " " + usb.SpeedString()
 		}
 		if usb.Serial != "" {
 			line += " sn " + truncateDisplay(usb.Serial, 24)

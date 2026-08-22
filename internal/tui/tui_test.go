@@ -416,8 +416,9 @@ func TestIsPCIUnknownClassification(t *testing.T) {
 func TestHardwareViewShowsUnknownPCIAndUSB(t *testing.T) {
 	snapshot := model.Snapshot{
 		PCI: []model.PCIDevice{
-			{Address: "0000:07:00.0", VendorID: "0x10de", DeviceID: "0x2684", Class: "0xff0000"},
+			{Address: "0000:07:00.0", VendorID: "0xffff", DeviceID: "0x2684", Class: "0x010000"},
 			{Address: "0000:01:00.0", VendorID: "0x144d", DeviceID: "0xa808", Class: "0x010802", Driver: "nvme"},
+			{Address: "0000:03:00.0", VendorID: "0x8086", DeviceID: "0x344a", Class: "0x088000", Driver: "skx_uncore"},
 		},
 		USB:             []model.USBDevice{{BusID: "1-2", VendorID: "8087", ProductID: "0026", Product: "AX201 Bluetooth", Manufacturer: "Intel Corp.", SpeedMbps: 12}},
 		USBMonAvailable: true,
@@ -427,6 +428,7 @@ func TestHardwareViewShowsUnknownPCIAndUSB(t *testing.T) {
 		"Unknown / unclaimed PCI devices",
 		"0000:07:00.0",
 		"no driver bound",
+		"system/generic peripherals hidden: 1",
 		"USB devices",
 		"1-2      8087:0026  AX201 Bluetooth (Intel Corp.)  12 Mb/s",
 		"usbmon available: yes",
@@ -446,9 +448,9 @@ func TestHardwareViewShowsUnknownPCIAndUSB(t *testing.T) {
 
 func TestStorageViewShowsDMDevices(t *testing.T) {
 	snapshot := model.Snapshot{Disks: []model.Disk{{Name: "dm-0", DMName: "vg0-root", Slaves: []string{"sda2", "sdb2"}}}}
-	view := stripANSI(viewStorage(snapshot))
-	if !contains(view, "dm vg0-root <- sda2+sdb2") {
-		t.Fatalf("dm annotation missing: %s", view)
+	view := stripANSI(viewStorage(snapshot, analyze.DefaultThresholds))
+	if !contains(view, "dm vg0-root") || !contains(view, "|- sda2") || !contains(view, "|- sdb2") {
+		t.Fatalf("dm tree missing: %s", view)
 	}
 }
 
@@ -787,8 +789,12 @@ func TestPickerViewportFollowsSelection(t *testing.T) {
 // from the Virtualization window scrolls with j/k without disturbing the
 // guest selection underneath.
 func TestDetailScrollIndependentFromVMSelection(t *testing.T) {
+	pane := make([]string, 60)
+	for i := range pane {
+		pane[i] = fmt.Sprintf("pane row %02d", i)
+	}
 	m := modelState{tab: 3, height: 24, vmSel: 1, detailMode: true, thresholds: analyze.DefaultThresholds,
-		detailTitle: "VM guest-b", detailLines: make([]string, 60),
+		detailTitle: "VM guest-b", detailLines: pane,
 		snapshot: model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{
 			{Name: "guest-a"}, {Name: "guest-b"},
 		}}}}
@@ -814,8 +820,12 @@ func tailOf(s string, n int) string {
 
 func TestScrollBadgeIndicatesRemainingContent(t *testing.T) {
 	newDetail := func(lines int) modelState {
+		body := make([]string, lines)
+		for i := range body {
+			body[i] = fmt.Sprintf("detail row %02d with content", i)
+		}
 		return modelState{height: 12, width: 100, thresholds: analyze.DefaultThresholds,
-			detailMode: true, detailTitle: "VM test", detailLines: make([]string, lines)}
+			detailMode: true, detailTitle: "VM test", detailLines: body}
 	}
 	// Top of a long page: only downward remains.
 	m := newDetail(40)
@@ -840,5 +850,80 @@ func TestScrollBadgeIndicatesRemainingContent(t *testing.T) {
 	fits := stripANSI(newDetail(3).View())
 	if contains(fits, "[more") {
 		t.Fatalf("badge shown for fitting content:\n%s", fits[:300])
+	}
+}
+
+func TestJumpToBottomThenScrollUpImmediately(t *testing.T) {
+	pane := make([]string, 40)
+	for i := range pane {
+		pane[i] = fmt.Sprintf("row %02d", i)
+	}
+	m := modelState{height: 12, width: 100, thresholds: analyze.DefaultThresholds,
+		detailMode: true, detailTitle: "T", detailLines: pane}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	state := updated.(modelState)
+	// Content is the title plus forty rows; viewport shows five.
+	const bottom = 41 - 5
+	if state.offset != bottom {
+		t.Fatalf("G offset = %d, want %d", state.offset, bottom)
+	}
+	updated, _ = state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+	if updated.(modelState).offset != bottom-1 {
+		t.Fatalf("first k did not move up: %d", updated.(modelState).offset)
+	}
+}
+
+func TestLinkStateMarkColors(t *testing.T) {
+	if got := linkStateMark("up"); !strings.HasPrefix(got, string(okStart)) {
+		t.Fatalf("up not green: %q", got)
+	}
+	if got := linkStateMark("down"); !strings.HasPrefix(got, string(badStart)) {
+		t.Fatalf("down not red: %q", got)
+	}
+	if got := linkStateMark(""); !strings.HasPrefix(got, string(unkStart)) || !contains(stripANSI(got), "unknown") {
+		t.Fatalf("empty state not unknown-yellow: %q", got)
+	}
+	if got := linkStateMark("dormant"); !strings.HasPrefix(got, string(unkStart)) {
+		t.Fatalf("dormant not unknown: %q", got)
+	}
+}
+
+func TestNetworkViewSparklines(t *testing.T) {
+	history := make([]model.Snapshot, 0, 4)
+	for i := 0; i < 4; i++ {
+		history = append(history, model.Snapshot{Networks: []model.Network{
+			{Name: "eno1", State: "up", RXBytesPerSec: float64(1000 * (i + 1)), TXBytesPerSec: float64(500 * (i + 1))},
+		}})
+	}
+	snapshot := model.Snapshot{Networks: []model.Network{{Name: "eno1", State: "up", RXBytesPerSec: 4000, TXBytesPerSec: 2000}}}
+	view := stripANSI(viewNetwork(snapshot, history))
+	if !contains(view, "rx ") || !contains(view, "▂▆") && !strings.ContainsAny(view, "▁▂▃▄▅▆▇█") {
+		t.Fatalf("sparkline missing:\n%s", view)
+	}
+	if strings.Count(view, "▁") == 0 && !strings.Contains(view, "█") {
+		t.Fatalf("no sparkline blocks rendered:\n%s", view)
+	}
+	raw := viewNetwork(snapshot, history)
+	if !strings.Contains(raw, string(okStart)+"up") {
+		t.Fatalf("link state not colored green: %q", raw[:200])
+	}
+}
+
+func TestGenericPCINoiseClassification(t *testing.T) {
+	cases := []struct {
+		device model.PCIDevice
+		want   bool
+	}{
+		{model.PCIDevice{Class: "0x088000", Driver: "skx_uncore"}, true},
+		{model.PCIDevice{Class: "0x088000"}, true},
+		{model.PCIDevice{Class: "0xff0000"}, true},
+		{model.PCIDevice{Class: "0x060400", Driver: "pcieport"}, false},
+		{model.PCIDevice{Class: "0x010802", Driver: "nvme"}, false},
+		{model.PCIDevice{Class: "0x088000", Driver: "some_real_driver"}, false},
+	}
+	for _, tc := range cases {
+		if got := isGenericPCINoise(tc.device); got != tc.want {
+			t.Fatalf("isGenericPCINoise(%+v) = %t, want %t", tc.device, got, tc.want)
+		}
 	}
 }

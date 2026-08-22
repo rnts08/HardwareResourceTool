@@ -83,18 +83,57 @@ const (
 	markInfo     = "\x01i\x02"
 )
 
-// Inline emphasis sentinels survive rune-based horizontal scrolling because
-// they occupy exactly one rune each; the renderer swaps them for ANSI bold
-// after the viewport slice. Emphasized text should include its own visible
-// characters (for example brackets) between the sentinels.
+// Inline state sentinels survive rune-based horizontal scrolling because
+// they occupy exactly one rune each; the renderer swaps each pair for its
+// ANSI sequence after the viewport slice. Wrapped text keeps its own
+// visible characters (for example brackets) between the sentinels.
 const (
-	emphStart = '\x03'
+	emphStart = '\x03' // bold
 	emphEnd   = '\x04'
+	okStart   = '\x0e' // green: good/healthy state
+	okEnd     = '\x0f'
+	warnStart = '\x10' // yellow: warning state
+	warnEnd   = '\x11'
+	badStart  = '\x12' // red: critical or failed state
+	badEnd    = '\x13'
+	unkStart  = '\x18' // bright yellow: unknown state
+	unkEnd    = '\x19'
 )
 
 // emph marks a string for bold rendering in the scrolled view.
-func emph(text string) string {
-	return string(emphStart) + text + string(emphEnd)
+func emph(text string) string { return string(emphStart) + text + string(emphEnd) }
+
+// okMark, warnMark, badMark, and unkMark wrap text with state colors.
+func okMark(text string) string   { return string(okStart) + text + string(okEnd) }
+func warnMark(text string) string { return string(warnStart) + text + string(warnEnd) }
+func badMark(text string) string  { return string(badStart) + text + string(badEnd) }
+func unkMark(text string) string  { return string(unkStart) + text + string(unkEnd) }
+
+// linkStateMark colors an interface state: green up, red down, yellow unknown.
+func linkStateMark(state string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "up":
+		return okMark(state)
+	case "down", "":
+		if state == "" {
+			return unkMark("unknown")
+		}
+		return badMark(state)
+	default:
+		return unkMark(state)
+	}
+}
+
+// usageMark colors a utilization value against warning and critical levels.
+func usageMark(percent, warnAt, critAt float64, text string) string {
+	switch {
+	case critAt > 0 && percent >= critAt:
+		return badMark(text)
+	case warnAt > 0 && percent >= warnAt:
+		return warnMark(text)
+	default:
+		return text
+	}
 }
 
 // indicator renders a mode marker such as a sort key: the letter appears bold
@@ -141,6 +180,10 @@ type spinnerTickMsg struct{}
 func spin() tea.Cmd {
 	return tea.Tick(120*time.Millisecond, func(time.Time) tea.Msg { return spinnerTickMsg{} })
 }
+
+// memoryWarnPercent drives the yellow memory-used coloring; red comes from
+// the configured critical threshold.
+const memoryWarnPercent = 85.0
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -215,6 +258,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "G":
 			if m.detailMode || !m.pickerMode {
 				m.offset = 1 << 24
+				m.clampOffsets()
 			}
 		case "j", "down":
 			if m.pickerMode && !m.detailMode {
@@ -232,6 +276,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.offset += pageStep(m.height, msg.String())
+			m.clampOffsets()
 		case "k", "up":
 			if m.pickerMode && !m.detailMode {
 				if m.pickerSel > 0 {
@@ -246,16 +291,13 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.offset -= pageStep(m.height, msg.String())
-			if m.offset < 0 {
-				m.offset = 0
-			}
+			m.clampOffsets()
 		case "pgdown", "ctrl+d", "ctrl+f":
 			m.offset += pageStep(m.height, msg.String())
+			m.clampOffsets()
 		case "pgup", "ctrl+u", "ctrl+b":
 			m.offset -= pageStep(m.height, msg.String())
-			if m.offset < 0 {
-				m.offset = 0
-			}
+			m.clampOffsets()
 		case "tab", "right", "l":
 			if m.pickerMode || m.detailMode || m.showHelp {
 				return m, nil
@@ -293,11 +335,10 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.Type {
 		case tea.MouseWheelUp:
 			m.offset -= 3
-			if m.offset < 0 {
-				m.offset = 0
-			}
+			m.clampOffsets()
 		case tea.MouseWheelDown:
 			m.offset += 3
+			m.clampOffsets()
 		case tea.MouseLeft:
 			if !m.showHelp && !m.detailMode && m.pickerMode && msg.Y >= 7 {
 				// Content begins below six header lines; item rows follow the
@@ -367,13 +408,8 @@ func (m modelState) scrollBadge(content string, footerLines int) string {
 	if m.width <= 0 || m.height <= 0 {
 		return ""
 	}
-	contentLines := len(splitLines(content))
 	headerLines := 6 // title, separator, tab bar, blank, status, blank
-	avail := m.height - headerLines - footerLines
-	if avail < 1 {
-		avail = 1
-	}
-	maxOffset := contentLines - avail
+	_, maxOffset := pageMetrics(content, headerLines, footerLines, m.height, m.offset)
 	moreAbove := m.offset > 0
 	moreBelow := m.offset < maxOffset
 	var inner string
@@ -934,9 +970,9 @@ func (m modelState) tabContent() string {
 	case 4:
 		return viewHardware(m.snapshot)
 	case 5:
-		return viewStorage(m.snapshot)
+		return viewStorage(m.snapshot, m.thresholds)
 	case 6:
-		return viewNetwork(m.snapshot)
+		return viewNetwork(m.snapshot, m.history)
 	case 7:
 		return viewThermal(m.snapshot)
 	default:
@@ -948,38 +984,59 @@ func (m modelState) tabContent() string {
 // fixed; only the content region scrolls vertically by offset and every line
 // scrolls horizontally by xoffset. Colored lines are colorized only after
 // horizontal scrolling so ANSI sequences never interfere with slicing.
+// pageMetrics is the single source of truth for scrollable-page math.
+// Content lines are trimmed of trailing blanks so a document ending in a
+// newline never inflates the scroll range with phantom empty rows, and the
+// result is padded to the available height exactly like rendering does.
+// trimmedContentLines splits content and drops trailing blank rows so a
+// document ending in a newline cannot create phantom scroll range.
+func trimmedContentLines(content string) []string {
+	lines := splitLines(content)
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
+}
+
+func pageMetrics(content string, headerCount, footerCount, height, offset int) (lines []string, maxOffset int) {
+	contentLines := trimmedContentLines(content)
+	avail := height - headerCount - footerCount
+	if avail < 1 {
+		avail = 1
+	}
+	maxOffset = len(contentLines) - avail
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if offset > maxOffset {
+		offset = maxOffset
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	end := offset + avail
+	if end > len(contentLines) {
+		end = len(contentLines)
+	}
+	if offset < len(contentLines) && offset < end {
+		lines = append(lines, contentLines[offset:end]...)
+	}
+	for len(lines) < avail {
+		lines = append(lines, "")
+	}
+	return lines, maxOffset
+}
+
 func renderScrolled(header, content, footer string, width, height, offset, xoffset int) string {
 	headerLines := splitLines(header)
-	contentLines := splitLines(content)
 	footerLines := splitLines(footer)
 
-	body := contentLines
+	body := splitLines(content)
+	for len(body) > 0 && body[len(body)-1] == "" {
+		body = body[:len(body)-1]
+	}
 	if height > 0 {
-		avail := height - len(headerLines) - len(footerLines)
-		if avail < 1 {
-			avail = 1
-		}
-		if len(contentLines) > avail {
-			maxOffset := len(contentLines) - avail
-			if offset > maxOffset {
-				offset = maxOffset
-			}
-			if offset < 0 {
-				offset = 0
-			}
-			end := offset + avail
-			if end > len(contentLines) {
-				end = len(contentLines)
-			}
-			body = contentLines[offset:end]
-		} else {
-			body = contentLines
-		}
-		// Pad short views so every tab occupies the full window height from
-		// the first frame instead of resizing as tabs change.
-		for len(body) < avail {
-			body = append(body, "")
-		}
+		body, _ = pageMetrics(content, len(headerLines), len(footerLines), height, offset)
 	}
 
 	all := append(append(append([]string{}, headerLines...), body...), footerLines...)
@@ -1049,48 +1106,91 @@ func scrollLine(line string, width, xoffset int) (string, string) {
 		}
 	}
 	mark := ""
-	if width > 0 && len(runes)-countEmphasis(runes) > width {
+	if width > 0 && len(runes)-countSentinels(runes) > width {
 		if width <= 1 {
 			return "…", marker
 		}
 		mark = "…"
 		runes = runes[:width-1]
 	}
-	return applyEmphasis(balanceEmphasis(string(runes))) + mark, marker
+	return renderSentinels(balanceSentinels(string(runes))) + mark, marker
 }
 
-// stripEmphasis removes emphasis sentinels without rendering them.
+// statePairs maps every sentinel pair to its ANSI sequence.
+var statePairs = []struct {
+	start, end rune
+	ansi       string
+}{
+	{emphStart, emphEnd, "\x1b[1m"},
+	{okStart, okEnd, "\x1b[32m"},
+	{warnStart, warnEnd, "\x1b[33m"},
+	{badStart, badEnd, "\x1b[31m"},
+	{unkStart, unkEnd, "\x1b[93m"},
+}
+
+// stripEmphasis removes all state sentinels without rendering them.
 func stripEmphasis(line string) string {
 	return strings.Map(func(r rune) rune {
-		if r == emphStart || r == emphEnd {
-			return -1
+		for _, pair := range statePairs {
+			if r == pair.start || r == pair.end {
+				return -1
+			}
 		}
 		return r
 	}, line)
 }
 
-func countEmphasis(runes []rune) int {
+func countSentinels(runes []rune) int {
 	count := 0
 	for _, r := range runes {
-		if r == emphStart || r == emphEnd {
-			count++
+		for _, pair := range statePairs {
+			if r == pair.start || r == pair.end {
+				count++
+				break
+			}
 		}
 	}
 	return count
 }
 
-// balanceEmphasis drops unmatched sentinels left by a viewport-edge cut.
-func balanceEmphasis(line string) string {
-	if strings.Count(line, string(emphStart)) == strings.Count(line, string(emphEnd)) {
+// balanceSentinels drops unmatched sentinels left by a viewport-edge cut.
+func balanceSentinels(line string) string {
+	balanced := true
+	for _, pair := range statePairs {
+		if strings.Count(line, string(pair.start)) != strings.Count(line, string(pair.end)) {
+			balanced = false
+			break
+		}
+	}
+	if balanced {
 		return line
 	}
 	return stripEmphasis(line)
 }
 
-// applyEmphasis swaps remaining sentinels for ANSI bold on/off.
-func applyEmphasis(line string) string {
-	line = strings.ReplaceAll(line, string(emphStart), "\x1b[1m")
-	return strings.ReplaceAll(line, string(emphEnd), "\x1b[0m")
+// renderSentinels swaps remaining sentinels for their ANSI sequences.
+func renderSentinels(line string) string {
+	var out strings.Builder
+	for _, r := range line {
+		matched := false
+		for _, pair := range statePairs {
+			switch r {
+			case pair.start:
+				out.WriteString(pair.ansi)
+				matched = true
+			case pair.end:
+				out.WriteString("\x1b[0m")
+				matched = true
+			}
+			if matched {
+				break
+			}
+		}
+		if !matched {
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
 }
 
 func applyColor(marker, line string) string {
@@ -1198,11 +1298,20 @@ func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds
 	fmt.Fprintf(&b, "  load average     %.2f %.2f %.2f\n", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15)
 	fmt.Fprintf(&b, "  events           context switches %d/s  interrupts %d/s\n", snapshot.CPU.ContextSwitch, snapshot.CPU.Interrupts)
 	if snapshot.System.CPUGovernor != "" {
-		fmt.Fprintf(&b, "  governor         %s\n", snapshot.System.CPUGovernor)
+		governor := snapshot.System.CPUGovernor
+		switch strings.ToLower(governor) {
+		case "performance":
+			governor = okMark(governor)
+		case "powersave":
+			governor = warnMark(governor)
+		default:
+			governor = unkMark(governor)
+		}
+		fmt.Fprintf(&b, "  governor         %s\n", governor)
 	}
 	b.WriteString("\nMemory\n")
 	fmt.Fprintf(&b, "  total            %s\n", formatBytes(snapshot.Memory.TotalBytes))
-	fmt.Fprintf(&b, "  available        %s (%.1f%% used)\n", formatBytes(snapshot.Memory.AvailableBytes), snapshot.Memory.UsedPercent)
+	fmt.Fprintf(&b, "  available        %s (%s used)\n", formatBytes(snapshot.Memory.AvailableBytes), usageMark(snapshot.Memory.UsedPercent, memoryWarnPercent, thresholds.MemoryUsedCritical, fmt.Sprintf("%.1f%%", snapshot.Memory.UsedPercent)))
 	fmt.Fprintf(&b, "  used history     %s\n", sparkline(historyValues(history, func(s model.Snapshot) float64 { return s.Memory.UsedPercent }), 0, 100))
 	if snapshot.Memory.SwapTotalBytes > 0 {
 		fmt.Fprintf(&b, "  swap             %s free of %s  in/out %d/%d per sec\n", formatBytes(snapshot.Memory.SwapFreeBytes), formatBytes(snapshot.Memory.SwapTotalBytes), snapshot.Memory.SwapInPerSec, snapshot.Memory.SwapOutPerSec)
@@ -1310,29 +1419,56 @@ func kernelEventDeltas(previous, current model.KernelEvents) model.KernelEvents 
 	return delta
 }
 
-func viewStorage(snapshot model.Snapshot) string {
+// diskRow renders one block-device rate line at the given indent.
+func diskRow(disk model.Disk, indent string) string {
+	return fmt.Sprintf("%s%-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d\n", indent, disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight)
+}
+
+func viewStorage(snapshot model.Snapshot, thresholds analyze.Thresholds) string {
 	var b strings.Builder
 	b.WriteString("Storage\n")
 	if len(snapshot.Disks) == 0 {
 		b.WriteString("  No block devices reported.\n")
 	}
+	byName := make(map[string]model.Disk, len(snapshot.Disks))
 	for _, disk := range snapshot.Disks {
+		byName[disk.Name] = disk
+	}
+	rendered := make(map[string]bool, len(snapshot.Disks))
+	for _, disk := range snapshot.Disks {
+		if rendered[disk.Name] {
+			continue
+		}
+		rendered[disk.Name] = true
 		dm := ""
 		if disk.DMName != "" {
 			dm = fmt.Sprintf("  dm %s", disk.DMName)
-			if len(disk.Slaves) > 0 {
-				dm += " <- " + strings.Join(disk.Slaves, "+")
+			if disk.DMUUID != "" && strings.HasPrefix(disk.DMUUID, "LVM-") {
+				dm += " (lvm)"
 			}
 		}
 		fmt.Fprintf(&b, "  %-16s read %10s/s  write %10s/s  ops %.1f/%.1f  in-flight %d%s\n", disk.Name, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.ReadsPerSec, disk.WritesPerSec, disk.InFlight, dm)
+		// Device-mapper volumes draw their backing devices as a small tree so
+		// volume I/O can be traced to physical disks at a glance.
+		if disk.DMName != "" && len(disk.Slaves) > 0 {
+			for _, slave := range disk.Slaves {
+				if sd, ok := byName[slave]; ok {
+					rendered[slave] = true
+					b.WriteString("    |- " + strings.TrimRight(diskRow(sd, ""), "\n") + "\n")
+				} else {
+					fmt.Fprintf(&b, "    |- %-16s (no rate sample)\n", slave)
+				}
+			}
+		}
 	}
 	b.WriteString("\nFilesystems\n")
 	for _, filesystem := range snapshot.Filesystems {
-		mode := "rw"
+		mode := okMark("rw")
 		if filesystem.ReadOnly {
-			mode = "ro"
+			mode = unkMark("ro")
 		}
-		fmt.Fprintf(&b, "  %-24s %-3s %5.1f%% used  available %10s  %s\n", filesystem.MountPoint, mode, filesystem.UsedPercent, formatBytes(filesystem.AvailableBytes), filesystem.Type)
+		used := usageMark(filesystem.UsedPercent, thresholds.FilesystemUsedWarning, thresholds.FilesystemUsedCritical, fmt.Sprintf("%5.1f%%", filesystem.UsedPercent))
+		fmt.Fprintf(&b, "  %-24s %s %s used  available %10s  %s\n", filesystem.MountPoint, mode, used, formatBytes(filesystem.AvailableBytes), filesystem.Type)
 	}
 	if snapshot.VirtualNetworkCount > 0 {
 		fmt.Fprintf(&b, "\n  Virtual/device-less interfaces filtered: %d\n", snapshot.VirtualNetworkCount)
@@ -1340,14 +1476,45 @@ func viewStorage(snapshot model.Snapshot) string {
 	return b.String()
 }
 
-func viewNetwork(snapshot model.Snapshot) string {
+// nicSeries extracts the recent rate history for one interface and direction.
+func nicSeries(history []model.Snapshot, name string, receive bool) []float64 {
+	start := len(history) - 20
+	if start < 0 {
+		start = 0
+	}
+	values := make([]float64, 0, len(history)-start)
+	for i := start; i < len(history); i++ {
+		for _, nic := range history[i].Networks {
+			if nic.Name == name {
+				if receive {
+					values = append(values, nic.RXBytesPerSec)
+				} else {
+					values = append(values, nic.TXBytesPerSec)
+				}
+				break
+			}
+		}
+	}
+	return values
+}
+
+func viewNetwork(snapshot model.Snapshot, history []model.Snapshot) string {
 	var b strings.Builder
 	b.WriteString("Network\n")
 	if len(snapshot.Networks) == 0 {
 		b.WriteString("  No network interfaces reported.\n")
 	}
 	for _, network := range snapshot.Networks {
-		fmt.Fprintf(&b, "  %-16s %-8s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, network.State, network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		fmt.Fprintf(&b, "  %-16s %s pci %-16s rx %10s/s  tx %10s/s  speed %dMb/s  mtu %d  queues %d/%d  rings %d/%d  errors %d/%d  drops %d/%d\n", network.Name, linkStateMark(network.State), network.PCIAddress, formatRate(network.RXBytesPerSec), formatRate(network.TXBytesPerSec), network.LinkSpeedMbps, network.MTU, network.RXQueues, network.TXQueues, network.RXRingSize, network.TXRingSize, network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops)
+		rxSeries := nicSeries(history, network.Name, true)
+		txSeries := nicSeries(history, network.Name, false)
+		if len(rxSeries) >= 2 && len(txSeries) >= 2 {
+			fmt.Fprintf(&b, "    rx %s %s/s   tx %s %s/s\n",
+				sparkline(rxSeries, 0, maxOf(rxSeries)),
+				formatRate(rxSeries[len(rxSeries)-1]),
+				sparkline(txSeries, 0, maxOf(txSeries)),
+				formatRate(txSeries[len(txSeries)-1]))
+		}
 		if network.Driver != "" || network.LinkDuplex != "" || network.FECActive != "" {
 			fmt.Fprintf(&b, "    driver %s v%s  fw %s  bus %s  port %s phy %d  xcvr %s  mdix %s  duplex %s  autoneg %s  fec %s  modes %d/%d  peer %d  max channels %d/%d/%d  pause %t/%t  ts %t phc %d  stats %d\n", network.Driver, network.DriverVersion, network.FWVersion, network.BusInfo, network.LinkPort, network.PHYAddress, network.Transceiver, network.TPMDIX, network.LinkDuplex, network.AutoNegotiation, network.FECActive, len(network.SupportedLinkModes), len(network.AdvertisedLinkModes), len(network.PeerLinkModes), network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels, network.RXPause, network.TXPause, network.Timestamping, network.PHCIndex, len(network.DriverStats))
 		}
@@ -1377,8 +1544,16 @@ func viewHardware(snapshot model.Snapshot) string {
 	b.WriteString(renderGPUs(snapshot))
 	b.WriteString(renderMemoryDevices(snapshot))
 	b.WriteString("\nPCIe devices\n")
+	noise := 0
 	for _, device := range snapshot.PCI {
+		if isGenericPCINoise(device) {
+			noise++
+			continue
+		}
 		fmt.Fprintf(&b, "  %-16s %-8s:%-8s class %-8s NUMA %d  link %s x%d/%s x%d  path %s x%d @%s  BARs %d/%s%s  caps %s  driver %s\n", device.Address, device.VendorID, device.DeviceID, device.Class, device.NUMANode, device.CurrentLinkSpeed, device.CurrentLinkWidth, device.MaxLinkSpeed, device.MaxLinkWidth, device.PCIePathMinSpeed, device.PCIePathMinWidth, device.PCIePathBottleneck, device.BARCount, formatBytes(device.BARTotalBytes), pciBARSummarySuffix(device), strings.Join(device.Capabilities, ","), device.Driver)
+	}
+	if noise > 0 {
+		fmt.Fprintf(&b, "  system/generic peripherals hidden: %d (class 0x08xx/0xffxx, for example uncore PMUs); inspect with d\n", noise)
 	}
 	b.WriteString(renderUnknownPCI(snapshot))
 	b.WriteString(renderUSB(snapshot))
@@ -1422,12 +1597,12 @@ func guestVMIDSuffix(vm model.VirtualMachine) string {
 	return ""
 }
 
-// guestState renders the running flag as text.
+// guestState renders the running flag as a colored state token.
 func guestState(vm model.VirtualMachine) string {
 	if vm.Running {
-		return "running"
+		return okMark("running")
 	}
-	return "stopped"
+	return unkMark("stopped")
 }
 
 // pickerHeaderLines is the number of content lines above the first picker row.
@@ -1460,6 +1635,36 @@ func virtualizationGuestLines(snapshot model.Snapshot) []int {
 // virtContentHeaderLines is the number of content lines above the first
 // guest block: section title plus three summary rows and the guests header.
 const virtContentHeaderLines = 6
+
+// clampOffsets bounds the scroll offsets to the current page. Without it a
+// G jump parks offset far past maxOffset and the first opposite key appears
+// dead because the renderer keeps clamping to the same bottom row.
+func (m *modelState) clampOffsets() {
+	if m.height <= 0 {
+		return
+	}
+	content := m.tabContent()
+	if m.findingsMode {
+		content = viewFindings(m.findings)
+	}
+	if m.pickerMode {
+		content = m.pickerContent()
+	}
+	if m.detailMode {
+		content = m.detailTitle + "\n" + strings.Join(m.detailLines, "\n") + "\n"
+	}
+	footerLines := 1
+	if m.err != nil || len(m.snapshot.Errors) > 0 {
+		footerLines = 2
+	}
+	_, maxOffset := pageMetrics(content, 6, footerLines, m.height, m.offset)
+	if m.offset > maxOffset {
+		m.offset = maxOffset
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
 
 // followLine adjusts the vertical offset so a block starting at first with
 // height lines is inside the visible area. homeOffset is the offset that
@@ -1651,6 +1856,9 @@ func renderUnknownPCI(snapshot model.Snapshot) string {
 	var b strings.Builder
 	unknown := make([]model.PCIDevice, 0)
 	for _, device := range snapshot.PCI {
+		if isGenericPCINoise(device) {
+			continue
+		}
 		if isPCIUnknown(device) {
 			unknown = append(unknown, device)
 		}
@@ -1700,6 +1908,22 @@ func renderUSB(snapshot model.Snapshot) string {
 
 // isPCIUnknown reports whether a PCI device has no driver bound and looks
 // unclaimed: an unknown class code or an absent/all-ones vendor id.
+// isGenericPCINoise reports whether a PCI function is a generic system or
+// unclassified peripheral (base classes 0x08 and 0xff). These are usually
+// uncore performance-monitoring units such as Intel skx_uncore; they carry
+// no link, BAR, or driver information useful on the main table.
+func isGenericPCINoise(device model.PCIDevice) bool {
+	class := strings.ToLower(strings.TrimPrefix(strings.ToLower(device.Class), "0x"))
+	if !strings.HasPrefix(class, "08") && !strings.HasPrefix(class, "ff") {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(device.Driver)) {
+	case "", "skx_uncore", "intel_uncore":
+		return true
+	}
+	return false
+}
+
 func isPCIUnknown(device model.PCIDevice) bool {
 	if device.Driver != "" {
 		return false
@@ -1851,6 +2075,16 @@ func vmNameForProcess(process model.ProcessSample, vms []model.VirtualMachine) s
 		}
 	}
 	return ""
+}
+
+func maxOf(values []float64) float64 {
+	max := 0.0
+	for _, v := range values {
+		if v > max {
+			max = v
+		}
+	}
+	return max
 }
 
 func historyValues(history []model.Snapshot, value func(model.Snapshot) float64) []float64 {

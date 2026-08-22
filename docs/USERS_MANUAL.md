@@ -183,7 +183,9 @@ power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
 While a window holds more content than the viewport, the status line shows
 a right-aligned [more ↓], [more ↑], or [more ↑↓] badge so it is obvious when
-scrolling (j/k, Page Up/Down, g/G) will reveal additional rows.
+scrolling (j/k, Page Up/Down, g/G) will reveal additional rows. Trailing
+blank lines never extend the scroll range, and G followed by an upward key
+takes effect immediately instead of requiring many presses.
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
 help; and q or Ctrl+C exits. While the first collection is still running the
 dashboard shows a centered loading spinner instead of empty windows; the
@@ -235,9 +237,11 @@ evidence of memory pressure than used percentage alone.
 
 Disks show device name, read/write throughput per second, read/write
 operations per second, and in-flight I/O. Loop and RAM pseudo devices are
-filtered. Device-mapper devices (`dm-*`) are annotated with their mapper name
-(for example an LVM logical volume) and the slave block devices backing them,
-so I/O on a volume can be traced to its physical disks. These are host
+filtered. Device-mapper volumes (`dm-*`, LVM) are drawn as a small tree: the mapper
+row is followed by one indented child per slave block device with that
+device's own rates, so volume I/O traces to physical disks at a glance.
+Filesystem used percentages are colored yellow and red past the warning and
+critical thresholds. These are host
 block-device rates, not necessarily guest filesystem rates.
 
 Filesystems show mount point, read/write mode, used percentage, available
@@ -262,6 +266,9 @@ The main list contains sysfs-backed physical or hardware-represented NICs.
 Bridges, taps, bonds, and device-less virtual interfaces are counted
 separately rather than presented as physical ports.
 
+The state token is colored green for up, red for down, and yellow for any
+other or unknown state. When at least two samples exist, each row is followed
+by an indented rx/tx sparkline pair covering the recent samples.
 Rows show interface name, state, PCI address, RX/TX throughput, speed, MTU,
 RX/TX queues, RX/TX ring sizes, errors, and drops. The secondary line shows
 driver and driver/firmware versions, bus info, link port, PHY address,
@@ -356,9 +363,13 @@ Memory-device rows show locator, size,
 type, speed, configured speed, and EDAC corrected/uncorrected errors where
 available.
 
-Below the memory devices, the Hardware window lists unknown or unclaimed PCI
-devices: entries with no driver bound whose class code is unclassified
-(`0xffxxxx`) or whose vendor id is absent or all-ones. These often indicate
+Generic system peripherals (PCI base classes 0x08 and 0xff, typically uncore
+performance-monitoring units such as Intel skx_uncore) are hidden from the
+main table and summarized on one line; they remain inspectable through the d
+picker. An unknown or unclaimed PCI section follows the main table:
+entries with no driver bound whose class code is unclassified
+(`0xffxxxx`) or whose vendor id is absent or all-ones, excluding the generic
+peripherals above. These often indicate
 firmware that needs enabling, a missing driver, or a device intentionally
 left unbound for passthrough. A USB section follows: bus ID, vendor/product
 IDs, product and manufacturer strings, serial, and speed for each USB device,

@@ -186,6 +186,8 @@ a right-aligned [more ↓], [more ↑], or [more ↑↓] badge so it is obvious 
 scrolling (j/k, Page Up/Down, g/G) will reveal additional rows. Trailing
 blank lines never extend the scroll range, and G followed by an upward key
 takes effect immediately instead of requiring many presses.
+Shift+R writes the text report from the current in-memory snapshot and exits
+the dashboard, printing it to stdout after the screen is restored.
 Space pauses and resumes collection; r forces an immediate refresh; ? shows
 help; and q or Ctrl+C exits. While the first collection is still running the
 dashboard shows a centered loading spinner instead of empty windows; the
@@ -193,7 +195,11 @@ first snapshot replaces it with the Overview. Findings are color-coded by
 severity (critical, warning, info). The active tab is highlighted in the
 header, footer keys are
 bold with dim descriptions, and live readings such as temperatures, fan
-speeds, and power draw are shown as bold values in brackets. Each window keeps
+speeds, and power draw are shown as bold bracketed values colored by state:
+green normal, yellow at 90 percent of a critical threshold, red at or above
+it. Utilization percentages, load averages against core count, link states,
+guest states, governors, and filesystem usage follow the same good/warning/
+critical/unknown color language. Each window keeps
 its own scroll position while you switch between them, and every window
 occupies the full terminal height from the first frame.
 

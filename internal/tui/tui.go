@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"hardware-resources-tool/internal/analyze"
 	"hardware-resources-tool/internal/collect"
 	"hardware-resources-tool/internal/model"
+	"hardware-resources-tool/internal/report"
 )
 
 const historyLimit = 60
@@ -42,6 +44,7 @@ type modelState struct {
 	awaitingFirst  bool
 	spinnerIdx     int
 	vmSel          int
+	reportText     string
 	collectTime    time.Duration
 	pickerMode     bool
 	detailMode     bool
@@ -124,6 +127,23 @@ func linkStateMark(state string) string {
 	}
 }
 
+// tempMark colors a temperature against its critical threshold: red at or
+// above, yellow from 90 percent of it, plain when no threshold is known.
+func tempMark(current, critical float64) string {
+	text := fmt.Sprintf("[%6.1f]", current)
+	if critical <= 0 {
+		return text
+	}
+	switch {
+	case current >= critical:
+		return badMark(text)
+	case current >= critical*0.9:
+		return warnMark(text)
+	default:
+		return okMark(text)
+	}
+}
+
 // usageMark colors a utilization value against warning and critical levels.
 func usageMark(percent, warnAt, critAt float64, text string) string {
 	switch {
@@ -145,7 +165,10 @@ func indicator(active bool, letter string) string {
 	return " " + letter + " "
 }
 
-func Run(collector *collect.Collector, interval time.Duration, thresholds analyze.Thresholds) error {
+// Run starts the dashboard. The returned string is empty unless the user
+// pressed shift+R to generate a report before quitting; the caller prints it
+// to stdout after the alternate screen has been restored.
+func Run(collector *collect.Collector, interval time.Duration, thresholds analyze.Thresholds) (string, error) {
 	if interval < 500*time.Millisecond {
 		interval = 500 * time.Millisecond
 	}
@@ -153,7 +176,18 @@ func Run(collector *collect.Collector, interval time.Duration, thresholds analyz
 	// The alternate screen gives every view the full window height from the
 	// first frame instead of growing inline with the tallest tab.
 	_, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
-	return err
+	return m.reportText, err
+}
+
+// renderReportText builds the same text report the check and report commands
+// produce, from the latest snapshot held in memory.
+func (m modelState) renderReportText() string {
+	result := model.Report{GeneratedAt: time.Now().UTC(), Snapshot: m.snapshot, Findings: m.findings}
+	var buf bytes.Buffer
+	if err := report.WriteText(&buf, result); err != nil {
+		return ""
+	}
+	return buf.String()
 }
 
 // switchTo changes tabs while preserving each tab's scroll position.
@@ -322,6 +356,13 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.xoffset -= 8
 			if m.xoffset < 0 {
 				m.xoffset = 0
+			}
+		case "R":
+			// Generate the text report from the current snapshot and exit;
+			// the CLI prints it after the screen is restored.
+			if !m.awaitingFirst && !m.pickerMode && !m.detailMode && !m.showHelp {
+				m.reportText = m.renderReportText()
+				return m, tea.Quit
 			}
 		case "r":
 			if !m.paused && !m.collecting {
@@ -522,7 +563,7 @@ func (m modelState) View() string {
 		footer.WriteString(hintLine([][2]string{
 			{"1-8:", "tabs"}, {"f", "findings"}, {"h/l", "prev/next"}, {"j/k", "scroll"},
 			{"g/G", "top/bottom"}, {"</>", "horizontal"}, {"d", "detail"}, {"space", "pause"},
-			{"r", "refresh"}, {"?", "help"}, {"q", "quit"},
+			{"r", "refresh"}, {"R", "report+exit"}, {"?", "help"}, {"q", "quit"},
 		}))
 	}
 
@@ -1231,6 +1272,7 @@ func renderHelp(thresholds analyze.Thresholds) string {
 		"  esc                close detail pane, picker, findings, or help",
 		"  space              pause/resume live collection",
 		"  r                  force a refresh now",
+		"  R                  write a text report from the current data and exit",
 		"  ?                  toggle this help",
 		"  q / Ctrl+C         quit",
 		"",
@@ -1293,9 +1335,21 @@ func viewCPUMemory(snapshot model.Snapshot, history []model.Snapshot, thresholds
 	var b strings.Builder
 	b.WriteString("CPU\n")
 	fmt.Fprintf(&b, "  logical CPUs     %d\n", snapshot.CPU.LogicalCPUs)
-	fmt.Fprintf(&b, "  utilization      user %5.1f%%  system %5.1f%%  iowait %5.1f%%  idle %5.1f%%\n", snapshot.CPU.UserPercent, snapshot.CPU.SystemPercent, snapshot.CPU.IOWaitPercent, snapshot.CPU.IdlePercent)
+	iowait := fmt.Sprintf("%5.1f%%", snapshot.CPU.IOWaitPercent)
+	if thresholds.IOWaitWarning > 0 && snapshot.CPU.IOWaitPercent >= thresholds.IOWaitWarning {
+		iowait = warnMark(iowait)
+	}
+	idle := fmt.Sprintf("%5.1f%%", snapshot.CPU.IdlePercent)
+	if thresholds.CPUIdleCritical > 0 && snapshot.CPU.IdlePercent <= thresholds.CPUIdleCritical {
+		idle = badMark(idle)
+	}
+	load := fmt.Sprintf("%.2f %.2f %.2f", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15)
+	if snapshot.CPU.LogicalCPUs > 0 && snapshot.CPU.Load1 > float64(snapshot.CPU.LogicalCPUs) {
+		load = warnMark(load)
+	}
+	fmt.Fprintf(&b, "  utilization      user %5.1f%%  system %5.1f%%  iowait %s  idle %s\n", snapshot.CPU.UserPercent, snapshot.CPU.SystemPercent, iowait, idle)
 	fmt.Fprintf(&b, "  idle history     %s\n", sparkline(historyValues(history, func(s model.Snapshot) float64 { return s.CPU.IdlePercent }), 0, 100))
-	fmt.Fprintf(&b, "  load average     %.2f %.2f %.2f\n", snapshot.CPU.Load1, snapshot.CPU.Load5, snapshot.CPU.Load15)
+	fmt.Fprintf(&b, "  load average     %s\n", load)
 	fmt.Fprintf(&b, "  events           context switches %d/s  interrupts %d/s\n", snapshot.CPU.ContextSwitch, snapshot.CPU.Interrupts)
 	if snapshot.System.CPUGovernor != "" {
 		governor := snapshot.System.CPUGovernor
@@ -1944,7 +1998,7 @@ func viewThermal(snapshot model.Snapshot) string {
 		return b.String()
 	}
 	for _, zone := range snapshot.Thermal.Zones {
-		fmt.Fprintf(&b, "  %-14s %-18s current %s C  critical %6.1f C  passive %6.1f C  policy %s  mode %s\n", zone.Name, zone.Type, emph(fmt.Sprintf("[%6.1f]", zone.Current)), zone.Critical, zone.Passive, zone.Policy, zone.Mode)
+		fmt.Fprintf(&b, "  %-14s %-18s current %s C  critical %6.1f C  passive %6.1f C  policy %s  mode %s\n", zone.Name, zone.Type, tempMark(zone.Current, zone.Critical), zone.Critical, zone.Passive, zone.Policy, zone.Mode)
 	}
 	if len(snapshot.Thermal.Sensors) > 0 {
 		b.WriteString("\nTemperature sensors\n")
@@ -1953,7 +2007,7 @@ func viewThermal(snapshot model.Snapshot) string {
 			if sensor.Alarm {
 				alarm = "  ALARM"
 			}
-			line := fmt.Sprintf("  %-8s %-8s %-20s %-10s current %s C  max %6.1f C  critical %6.1f C%s\n", sensor.Name, sensor.Sensor, sensor.Label, sensor.Source, emph(fmt.Sprintf("[%6.1f]", sensor.Current)), sensor.Max, sensor.Critical, alarm)
+			line := fmt.Sprintf("  %-8s %-8s %-20s %-10s current %s C  max %6.1f C  critical %6.1f C%s\n", sensor.Name, sensor.Sensor, sensor.Label, sensor.Source, tempMark(sensor.Current, sensor.Critical), sensor.Max, sensor.Critical, alarm)
 			if sensor.Alarm || (sensor.Critical > 0 && sensor.Current >= sensor.Critical*0.9) {
 				line = markWarning + line
 			}

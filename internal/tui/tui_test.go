@@ -339,8 +339,19 @@ func TestThermalValuesAreBracketed(t *testing.T) {
 		Zones: []model.ThermalZone{{Name: "acpitz", Type: "critical", Current: 45.5, Critical: 100}},
 	}}
 	view := viewThermal(snapshot)
-	if !strings.Contains(view, emph("[  45.5]")) {
-		t.Fatalf("zone current not bracketed+emphasized: %q", view)
+	// 45.5 against a 100 C critical is healthy: green bracketed value.
+	if !strings.Contains(view, okMark("[  45.5]")) {
+		t.Fatalf("zone current not colored: %q", view)
+	}
+	hot := snapshot
+	hot.Thermal.Zones[0].Current = 95
+	if !strings.Contains(viewThermal(hot), warnMark("[  95.0]")) {
+		t.Fatal("near-critical temperature not yellow")
+	}
+	critical := snapshot
+	critical.Thermal.Zones[0].Current = 100
+	if !strings.Contains(viewThermal(critical), badMark("[ 100.0]")) {
+		t.Fatal("critical temperature not red")
 	}
 }
 
@@ -925,5 +936,28 @@ func TestGenericPCINoiseClassification(t *testing.T) {
 		if got := isGenericPCINoise(tc.device); got != tc.want {
 			t.Fatalf("isGenericPCINoise(%+v) = %t, want %t", tc.device, got, tc.want)
 		}
+	}
+}
+
+func TestReportShortcutGeneratesReportAndQuits(t *testing.T) {
+	m := modelState{tab: 0, height: 24, width: 100, thresholds: analyze.DefaultThresholds,
+		snapshot: model.Snapshot{CPU: model.CPU{LogicalCPUs: 4, UserPercent: 5, SystemPercent: 1, IOWaitPercent: 0.2, IdlePercent: 93.8}},
+		findings: []model.Finding{{Severity: "info", Title: "t", Category: "cpu", Evidence: "e", Recommendation: "r"}}}
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	state := updated.(modelState)
+	if state.reportText == "" {
+		t.Fatal("R produced no report text")
+	}
+	if !strings.Contains(state.reportText, "Hardware Resources Report") || !strings.Contains(state.reportText, "CPU: 5.0% user") {
+		t.Fatalf("report content unexpected:\n%s", state.reportText[:200])
+	}
+	if cmd == nil {
+		t.Fatal("R did not schedule quit")
+	}
+	// Inactive while the first collection is still running.
+	loading := modelState{awaitingFirst: true, thresholds: analyze.DefaultThresholds}
+	updated, _ = loading.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	if updated.(modelState).reportText != "" {
+		t.Fatal("R generated a report before any data arrived")
 	}
 }

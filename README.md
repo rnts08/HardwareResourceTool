@@ -224,7 +224,8 @@ for its sparklines. Use:
 - Mouse wheel scrolls the active view; clicking a tab header row switches
   views.
 - `Space` pauses and resumes live collection.
-- `r` forces a refresh before the next interval.
+- `r` forces a refresh before the next interval; `Shift+R` writes the text
+  report from the current data to stdout and exits.
 - `?` for help; Esc closes help first when it is open.
 - `q` or `Ctrl+C` to exit.
 

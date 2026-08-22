@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -12,11 +13,15 @@ import (
 func init() {
 	var interval time.Duration
 	thresholds := analyze.DefaultThresholds
-	command := &cobra.Command{Use: "tui", Short: "Run the live terminal dashboard", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
+	command := &cobra.Command{Use: "tui", Short: "Run the live terminal dashboard", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := requireRoot(); err != nil {
 			return err
 		}
-		return tui.Run(collect.New(), interval, thresholds)
+		reportText, err := tui.Run(collect.New(), interval, thresholds)
+		if reportText != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), reportText)
+		}
+		return err
 	}}
 	command.Flags().DurationVar(&interval, "interval", 2*time.Second, "refresh interval (minimum 500ms)")
 	command.Flags().Float64Var(&thresholds.CPUIdleCritical, "cpu-idle-critical", thresholds.CPUIdleCritical, "critical finding below this idle CPU percentage")

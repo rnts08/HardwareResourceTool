@@ -135,12 +135,15 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "esc":
-			if m.detailMode {
+			// Close the topmost visible layer first: help renders above
+			// every other mode, so mutating lower layers before it leaves
+			// invisible state changes.
+			if m.showHelp {
+				m.showHelp = false
+			} else if m.detailMode {
 				m.detailMode = false
 			} else if m.pickerMode {
 				m.pickerMode = false
-			} else if m.showHelp {
-				m.showHelp = false
 			} else if m.findingsMode {
 				m.findingsMode = false
 			}
@@ -181,15 +184,15 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				m.powerMode = !m.powerMode
 			}
 		case "g":
-			if !m.pickerMode {
+			if m.detailMode || !m.pickerMode {
 				m.offset = 0
 			}
 		case "G":
-			if !m.pickerMode {
+			if m.detailMode || !m.pickerMode {
 				m.offset = 1 << 24
 			}
 		case "j", "down":
-			if m.pickerMode {
+			if m.pickerMode && !m.detailMode {
 				if m.pickerSel+1 < len(m.pickerItems) {
 					m.pickerSel++
 				}
@@ -197,7 +200,7 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.offset += pageStep(m.height, msg.String())
 		case "k", "up":
-			if m.pickerMode {
+			if m.pickerMode && !m.detailMode {
 				if m.pickerSel > 0 {
 					m.pickerSel--
 				}
@@ -257,6 +260,18 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.MouseWheelDown:
 			m.offset += 3
 		case tea.MouseLeft:
+			if !m.showHelp && !m.detailMode && m.pickerMode && msg.Y >= 7 {
+				// Content begins below six header lines; item rows follow the
+				// picker's one-line title.
+				if idx := msg.Y - 7 + m.offset; idx < len(m.pickerItems) {
+					if idx == m.pickerSel {
+						m.openDetail()
+					} else {
+						m.pickerSel = idx
+					}
+				}
+				return m, nil
+			}
 			if !m.showHelp && !m.pickerMode && !m.detailMode && msg.Y == 2 {
 				if tab := m.tabAtX(msg.X); tab >= 0 {
 					m.switchTo(tab)
@@ -382,7 +397,9 @@ func (m modelState) View() string {
 	return renderScrolled(header.String(), content, footer.String(), m.width, m.height, m.offset, m.xoffset)
 }
 
-func (m modelState) openDetail() {
+// openDetail mutates through a pointer receiver: a value receiver would
+// update a throwaway copy and pressing enter would silently do nothing.
+func (m *modelState) openDetail() {
 	if m.pickerSel < 0 || m.pickerSel >= len(m.pickerItems) {
 		return
 	}
@@ -431,6 +448,16 @@ func buildPicker(snapshot model.Snapshot) []pickerItem {
 	for i, memory := range snapshot.MemoryDevices {
 		items = append(items, pickerItem{kind: "memory", index: i, label: fmt.Sprintf("DIMM  %-16s %6.1f GiB %s", memory.Locator, float64(memory.SizeBytes)/(1024*1024*1024), memory.Type)})
 	}
+	for i, disk := range snapshot.Disks {
+		label := disk.Name
+		if disk.DMName != "" {
+			label = fmt.Sprintf("%s (%s <- %s)", disk.Name, disk.DMName, strings.Join(disk.Slaves, "+"))
+		}
+		items = append(items, pickerItem{kind: "disk", index: i, label: fmt.Sprintf("DISK  %-24s read %9s/s write %9s/s in-flight %d", label, formatRate(disk.ReadBytesPerSec), formatRate(disk.WriteBytesPerSec), disk.InFlight)})
+	}
+	for i, nic := range snapshot.Networks {
+		items = append(items, pickerItem{kind: "nic", index: i, label: fmt.Sprintf("NIC   %-16s %-8s pci %s speed %d Mb/s rx %9s/s tx %9s/s", nic.Name, nic.State, nic.PCIAddress, nic.LinkSpeedMbps, formatRate(nic.RXBytesPerSec), formatRate(nic.TXBytesPerSec))})
+	}
 	return items
 }
 
@@ -477,14 +504,31 @@ func (m modelState) tabAtX(x int) int {
 }
 
 func detailFor(snapshot model.Snapshot, item pickerItem) (string, []string) {
+	// Guard stale selections: a fresh snapshot can shrink a list between
+	// rendering the picker and pressing enter.
+	unavailable := func(label string) (string, []string) {
+		return "No longer available", []string{"  " + label + " was not found in the latest capture."}
+	}
 	switch item.kind {
 	case "vm":
+		if item.index >= len(snapshot.Virtualization.VirtualMachines) {
+			return unavailable(item.label)
+		}
 		return vmDetail(snapshot.Virtualization.VirtualMachines[item.index])
 	case "gpu":
+		if item.index >= len(snapshot.GPUs) {
+			return unavailable(item.label)
+		}
 		return gpuDetail(snapshot.GPUs[item.index])
 	case "pci":
+		if item.index >= len(snapshot.PCI) {
+			return unavailable(item.label)
+		}
 		return pciDetail(snapshot.PCI[item.index])
 	case "memory":
+		if item.index >= len(snapshot.MemoryDevices) {
+			return unavailable(item.label)
+		}
 		device := snapshot.MemoryDevices[item.index]
 		lines := []string{
 			fmt.Sprintf("  locator          %s", device.Locator),
@@ -499,8 +543,70 @@ func detailFor(snapshot model.Snapshot, item pickerItem) (string, []string) {
 			fmt.Sprintf("  uncorrected errs %d", device.UncorrectedErrors),
 		}
 		return "DIMM " + device.Locator, lines
+	case "disk":
+		if item.index >= len(snapshot.Disks) {
+			return unavailable(item.label)
+		}
+		return diskDetail(snapshot.Disks[item.index])
+	case "nic":
+		if item.index >= len(snapshot.Networks) {
+			return unavailable(item.label)
+		}
+		return nicDetail(snapshot.Networks[item.index])
 	}
 	return "", nil
+}
+
+// diskDetail renders the field breakdown for one block device.
+func diskDetail(disk model.Disk) (string, []string) {
+	lines := []string{
+		fmt.Sprintf("  device           %s", disk.Name),
+		fmt.Sprintf("  read totals      %s (%.1f ops/s)", formatBytes(disk.ReadBytes), disk.ReadsPerSec),
+		fmt.Sprintf("  write totals     %s (%.1f ops/s)", formatBytes(disk.WriteBytes), disk.WritesPerSec),
+		fmt.Sprintf("  throughput       %s/s read, %s/s write", formatBytes(uint64(disk.ReadBytesPerSec)), formatBytes(uint64(disk.WriteBytesPerSec))),
+		fmt.Sprintf("  in-flight        %d", disk.InFlight),
+	}
+	if disk.DMName != "" {
+		lines = append(lines,
+			fmt.Sprintf("  dm name          %s", disk.DMName),
+			fmt.Sprintf("  dm uuid          %s", disk.DMUUID))
+		if len(disk.Slaves) > 0 {
+			lines = append(lines, fmt.Sprintf("  slaves           %s", strings.Join(disk.Slaves, ", ")))
+		}
+	}
+	return "Disk " + disk.Name, lines
+}
+
+// nicDetail renders the field breakdown for one physical NIC.
+func nicDetail(network model.Network) (string, []string) {
+	lines := []string{
+		fmt.Sprintf("  interface        %s (%s)", network.Name, network.State),
+		fmt.Sprintf("  pci address      %s", network.PCIAddress),
+		fmt.Sprintf("  link speed       %d Mb/s  mtu %d", network.LinkSpeedMbps, network.MTU),
+		fmt.Sprintf("  queues           rx %d tx %d combined max %d/%d/%d", network.RXQueues, network.TXQueues, network.MaxRXChannels, network.MaxTXChannels, network.MaxCombinedChannels),
+		fmt.Sprintf("  rings            rx %d tx %d", network.RXRingSize, network.TXRingSize),
+		fmt.Sprintf("  counters         rx %s tx %s (%.1f/%.1f KiB/s)", formatBytes(network.RXBytes), formatBytes(network.TXBytes), network.RXBytesPerSec/1024, network.TXBytesPerSec/1024),
+		fmt.Sprintf("  packets          rx %d tx %d", network.RXPackets, network.TXPackets),
+		fmt.Sprintf("  errors           rx %d tx %d   drops rx %d tx %d", network.RXErrors, network.TXErrors, network.RXDrops, network.TXDrops),
+	}
+	if network.Driver != "" {
+		lines = append(lines,
+			fmt.Sprintf("  driver           %s v%s fw %s", network.Driver, network.DriverVersion, network.FWVersion),
+			fmt.Sprintf("  port             %s phy %d xcvr %s mdix %s bus %s", network.LinkPort, network.PHYAddress, network.Transceiver, network.TPMDIX, network.BusInfo),
+			fmt.Sprintf("  duplex           %s autoneg %s fec %s", network.LinkDuplex, orDash(network.AutoNegotiation), orDash(network.FECActive)))
+	}
+	if len(network.FeaturesActive) > 0 {
+		lines = append(lines, fmt.Sprintf("  features active  %d of %d hardware-supported", len(network.FeaturesActive), len(network.FeaturesHardware)))
+	}
+	return "NIC " + network.Name, lines
+}
+
+// orDash renders an empty string as a dash so detail rows never trail blank.
+func orDash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 func vmDetail(vm model.VirtualMachine) (string, []string) {

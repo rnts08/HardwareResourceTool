@@ -174,8 +174,8 @@ and Thermal, in that order. Select them with 1–7. Tab, Right arrow, and l
 move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
 scroll the active window vertically; g and G jump to the top and bottom; < and
 > or Shift+arrows scroll it horizontally; d opens a picker of VMs, GPUs, PCI
-devices, and DIMMs from any window where j/k select and Enter expands a
-field-by-field detail pane; f toggles the findings view; c toggles full
+devices, DIMMs, block devices, and NICs from any window where j/k select and
+Enter expands a field-by-field detail pane; f toggles the findings view; c toggles full
 command lines and C/M/L change the sort on Processes; p toggles the cpufreq
 power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
@@ -319,13 +319,17 @@ left unbound for passthrough. A USB section follows: bus ID, vendor/product
 IDs, product and manufacturer strings, serial, and speed for each USB device,
 plus whether `usbmon` is available under debugfs for packet-level tracing.
 
-Pressing `d` opens a picker of every VM, GPU, PCI device, and DIMM reported in
-this capture. `j`/`k` move the selection and Enter opens a detail pane that
-shows the full field breakdown for the chosen item: VMs expand to balloon and
-QMP state, per-disk sources, per-NIC host correlation and rates, NUMA
-residency, and PCI attachments; GPUs to NVML/MIG/ECC state; PCI devices to
-link/capability/BAR/AER fields; DIMMs to speed and ECC counters. Esc returns
-from the pane to the picker, and Esc again closes the picker.
+Pressing `d` opens a picker of every VM, GPU, PCI device, DIMM, block device,
+and physical NIC reported in this capture. `j`/`k` move the selection and
+Enter opens a detail pane that shows the full field breakdown for the chosen
+item: VMs expand to balloon and QMP state, per-disk sources, per-NIC host
+correlation and rates, NUMA residency, and PCI attachments; GPUs to
+NVML/MIG/ECC state; PCI devices to link/capability/BAR/AER fields; DIMMs to
+speed and ECC counters; disks to totals, rates, in-flight I/O, and dm/LVM
+slave mapping; NICs to counters, errors/drops, queues, rings, driver, duplex,
+autonegotiation, and FEC. Clicking a row selects it, and clicking the selected
+row opens its pane. Esc returns from the pane to the picker (j/k scroll the
+pane while it is open), and Esc again closes the picker.
 
 ### Thermal
 

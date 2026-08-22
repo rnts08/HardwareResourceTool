@@ -491,3 +491,104 @@ func TestPowerModeToggleKey(t *testing.T) {
 		t.Fatal("p toggled power mode outside CPU/Memory tab")
 	}
 }
+
+// TestEnterOpensDetailPane is a regression for openDetail having a value
+// receiver: enter set detailMode on a throwaway copy and the pane never
+// appeared.
+func TestEnterOpensDetailPane(t *testing.T) {
+	m := modelState{tab: 3, pickerMode: true, thresholds: analyze.DefaultThresholds,
+		pickerItems: []pickerItem{{kind: "vm", index: 0, label: "VM test"}}, pickerSel: 0,
+		snapshot: model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{
+			{Name: "test-vm", PID: 1234, Running: true, ConfiguredVCPUs: 4},
+		}}}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	final := updated.(modelState)
+	if !final.detailMode {
+		t.Fatal("enter did not open the detail pane (value receiver regression)")
+	}
+	if !strings.Contains(final.View(), "test-vm") {
+		t.Fatalf("detail pane missing VM fields: %s", final.View())
+	}
+}
+
+func TestDetailPaneScrollsInsteadOfMovingPickerSelection(t *testing.T) {
+	m := modelState{tab: 3, pickerMode: true, detailMode: true, pickerSel: 1,
+		pickerItems: []pickerItem{{kind: "vm", index: 0}, {kind: "gpu", index: 0}},
+		thresholds:  analyze.DefaultThresholds}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	state := updated.(modelState)
+	if state.pickerSel != 1 {
+		t.Fatalf("j moved picker selection while detail open: %d", state.pickerSel)
+	}
+	if state.offset != 1 {
+		t.Fatalf("j did not scroll the detail pane: %d", state.offset)
+	}
+	updated, _ = state.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if updated.(modelState).offset != 0 {
+		t.Fatal("g did not jump to top of detail pane")
+	}
+}
+
+func TestPickerIncludesDisksAndNICs(t *testing.T) {
+	snapshot := model.Snapshot{
+		Disks:    []model.Disk{{Name: "dm-0", DMName: "vg0-root", Slaves: []string{"sda2"}, ReadBytesPerSec: 1024, WriteBytesPerSec: 2048, InFlight: 3}, {Name: "sda"}},
+		Networks: []model.Network{{Name: "eno1", State: "up", PCIAddress: "0000:00:1f.6", LinkSpeedMbps: 1000}},
+	}
+	items := buildPicker(snapshot)
+	kinds := map[string]int{}
+	for _, item := range items {
+		kinds[item.kind]++
+		if strings.TrimSpace(item.label) == "" {
+			t.Fatalf("empty label for kind %s", item.kind)
+		}
+	}
+	if kinds["disk"] != 2 || kinds["nic"] != 1 {
+		t.Fatalf("picker missing disk/nic entries: %#v", kinds)
+	}
+	title, lines := detailFor(snapshot, pickerItem{kind: "disk", index: 0})
+	if title != "Disk dm-0" || len(lines) == 0 || !contains(strings.Join(lines, "\n"), "dm name          vg0-root") {
+		t.Fatalf("disk detail incomplete: %s %v", title, lines)
+	}
+	title, lines = detailFor(snapshot, pickerItem{kind: "nic", index: 0})
+	if title != "NIC eno1" || len(lines) == 0 || !contains(strings.Join(lines, "\n"), "link speed       1000 Mb/s") {
+		t.Fatalf("nic detail incomplete: %s %v", title, lines)
+	}
+}
+
+func TestPickerMouseClickSelectsRow(t *testing.T) {
+	snapshot := model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "a"}, {Name: "b"}}}}
+	m := modelState{pickerMode: true, height: 40, thresholds: analyze.DefaultThresholds,
+		pickerItems: buildPicker(snapshot), snapshot: snapshot}
+	updated, _ := m.Update(tea.MouseMsg{Type: tea.MouseLeft, X: 4, Y: 8})
+	if updated.(modelState).pickerSel != 1 {
+		t.Fatalf("click on second row selected %d", updated.(modelState).pickerSel)
+	}
+	updated, _ = updated.(modelState).Update(tea.MouseMsg{Type: tea.MouseLeft, X: 4, Y: 8})
+	if !updated.(modelState).detailMode {
+		t.Fatal("clicking the selected row did not open the detail pane")
+	}
+}
+
+func TestDetailForStaleIndexDoesNotPanic(t *testing.T) {
+	snapshot := model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "a"}}}}
+	title, lines := detailFor(snapshot, pickerItem{kind: "vm", index: 5, label: "VM b"})
+	if title != "No longer available" || len(lines) == 0 {
+		t.Fatalf("stale index handling wrong: %q %v", title, lines)
+	}
+}
+
+func TestEscClosesTopmostOverlayFirst(t *testing.T) {
+	m := modelState{pickerMode: true, detailMode: true, showHelp: true, thresholds: analyze.DefaultThresholds}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	state := updated.(modelState)
+	if state.showHelp {
+		t.Fatal("esc did not close help first")
+	}
+	if !state.detailMode || !state.pickerMode {
+		t.Fatal("esc mutated layers below help")
+	}
+	updated, _ = state.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if updated.(modelState).detailMode {
+		t.Fatal("esc did not close detail pane")
+	}
+}

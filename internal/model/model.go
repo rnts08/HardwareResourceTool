@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 const SchemaVersion = "1"
 
@@ -48,6 +52,35 @@ type CPUPolicy struct {
 	AvailableGovernors []string `json:"available_governors,omitempty"`
 	EPP                string   `json:"epp,omitempty"`
 	AvailableEPP       []string `json:"available_epp,omitempty"`
+}
+
+// CompressPolicies merges adjacent policies whose governor and EPP settings
+// match so hosts that expose one policy per CPU render compactly.
+func CompressPolicies(policies []CPUPolicy) [][]CPUPolicy {
+	var groups [][]CPUPolicy
+	for _, policy := range policies {
+		if n := len(groups); n > 0 {
+			group := groups[n-1]
+			tail := group[len(group)-1]
+			if tail.Governor == policy.Governor && tail.EPP == policy.EPP {
+				groups[n-1] = append(group, policy)
+				continue
+			}
+		}
+		groups = append(groups, []CPUPolicy{policy})
+	}
+	return groups
+}
+
+// PolicyGroupName renders a compressed name for a run of policies, for
+// example "policy0" or "policies 0-7".
+func PolicyGroupName(group []CPUPolicy) string {
+	if len(group) == 1 {
+		return group[0].Policy
+	}
+	first := strings.TrimPrefix(group[0].Policy, "policy")
+	last := strings.TrimPrefix(group[len(group)-1].Policy, "policy")
+	return fmt.Sprintf("policies %s-%s", first, last)
 }
 
 type CPU struct {

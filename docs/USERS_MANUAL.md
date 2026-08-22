@@ -347,10 +347,17 @@ between the short command name and the full `/proc/PID/cmdline` command line
 
 ## 5. Text report interpretation
 
-Text output contains timestamp, CPU, memory/system, virtualization, limits and
-sysctls, real filesystems, physical networks, PCIe devices with useful data,
-GPUs, inventory totals, findings, and collector-error count. It is intended
-for operators and incident records; JSON is the complete machine interface.
+Text output contains timestamp with collection duration, CPU, memory/system
+plus one `Cpufreq:` line per distinct governor/EPP setting (identical adjacent
+policies are compressed, e.g. `policies 0-7`), virtualization (the platform is
+reported as `none detected` when KVM/QEMU is present but unidentified), limits,
+sorted sysctls, real filesystems, physical networks (unknown FEC/RSS render as
+`-`), PCIe devices with useful data, GPUs, USB devices with truncated serials
+and usbmon availability, inventory totals, findings, and the collector-error
+count with each error listed individually. Zero-valued optional fields — QMP,
+balloon, hugepage, NUMA segments on VM lines; missing thermal limits; host/init
+limits — are omitted rather than printed as zeros. It is intended for operators
+and incident records; JSON is the complete machine interface.
 
 Text units are percentages, GiB for memory, MiB for VM RSS/I/O, KiB/s for VM
 NIC rates, and labeled bytes/rates. Empty optional fields, unavailable status,

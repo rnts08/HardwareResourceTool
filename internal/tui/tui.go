@@ -999,8 +999,12 @@ func renderPowerAdvisor(policies []model.CPUPolicy) string {
 		b.WriteString("  No cpufreq policies exposed by the kernel.\n")
 		return b.String()
 	}
-	for _, policy := range policies {
-		fmt.Fprintf(&b, "  %s cpus %-12s governor %s", policy.Policy, policy.CPUs, policy.Governor)
+	for _, group := range model.CompressPolicies(policies) {
+		policy := group[0]
+		fmt.Fprintf(&b, "  %s governor %s", model.PolicyGroupName(group), policy.Governor)
+		if len(group) == 1 && policy.CPUs != "" {
+			fmt.Fprintf(&b, " cpus %s", policy.CPUs)
+		}
 		if len(policy.AvailableGovernors) > 0 {
 			b.WriteString("  available: " + strings.Join(policy.AvailableGovernors, " "))
 		}
@@ -1152,7 +1156,17 @@ func viewHardware(snapshot model.Snapshot) string {
 	if snapshot.Virtualization.QEMUDetected || len(snapshot.Virtualization.VirtualMachines) > 0 {
 		b.WriteString("\nKVM/QEMU domains\n")
 		for _, vm := range snapshot.Virtualization.VirtualMachines {
-			fmt.Fprintf(&b, "  %-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB huge/hugetlb %6.1f/%6.1f MiB QMP %s base/plug %6.1f/%6.1f GiB NUMA %v\n", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024), float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024), vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), vm.NUMANodes)
+			segments := []string{fmt.Sprintf("%-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024))}
+			if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
+				segments = append(segments, fmt.Sprintf("huge/hugetlb %6.1f/%6.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))
+			}
+			if vm.QMPVersion != "" {
+				segments = append(segments, fmt.Sprintf("QMP %s base/plug %6.1f/%6.1f GiB", vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024)))
+			}
+			if len(vm.NUMANodes) > 0 {
+				segments = append(segments, fmt.Sprintf("NUMA %v", vm.NUMANodes))
+			}
+			fmt.Fprintf(&b, "  %s\n", strings.Join(segments, "  "))
 			if len(vm.QMPBlockDevices) > 0 {
 				fmt.Fprintf(&b, "    block I/O rd %.1f MiB/%d ops wr %.1f MiB/%d ops across %d device(s)\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps, len(vm.QMPBlockDevices))
 			}

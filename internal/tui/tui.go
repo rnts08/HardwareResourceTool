@@ -220,12 +220,14 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pickerMode && !m.detailMode {
 				if m.pickerSel+1 < len(m.pickerItems) {
 					m.pickerSel++
+					m.followLine(pickerHeaderLines+m.pickerSel, 1)
 				}
 				return m, nil
 			}
 			if m.tab == 3 && !m.detailMode && !m.showHelp && len(m.snapshot.Virtualization.VirtualMachines) > 0 {
 				if m.vmSel < len(m.snapshot.Virtualization.VirtualMachines)-1 {
 					m.vmSel++
+					m.followVirtualizationSelection()
 				}
 				return m, nil
 			}
@@ -234,11 +236,13 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pickerMode && !m.detailMode {
 				if m.pickerSel > 0 {
 					m.pickerSel--
+					m.followLine(pickerHeaderLines+m.pickerSel, 1)
 				}
 				return m, nil
 			}
 			if m.tab == 3 && !m.detailMode && !m.showHelp && m.vmSel > 0 {
 				m.vmSel--
+				m.followVirtualizationSelection()
 				return m, nil
 			}
 			m.offset -= pageStep(m.height, msg.String())
@@ -1371,6 +1375,92 @@ func renderGPUs(snapshot model.Snapshot) string {
 	return b.String()
 }
 
+// guestVMIDSuffix renders the VMID fragment when the platform exposes one.
+func guestVMIDSuffix(vm model.VirtualMachine) string {
+	if vm.VMID != "" {
+		return " vmid " + vm.VMID
+	}
+	return ""
+}
+
+// guestState renders the running flag as text.
+func guestState(vm model.VirtualMachine) string {
+	if vm.Running {
+		return "running"
+	}
+	return "stopped"
+}
+
+// pickerHeaderLines is the number of content lines above the first picker row.
+const pickerHeaderLines = 1
+
+// virtualizationGuestLines counts the rendered lines of every guest block,
+// mirroring the sub-line conditions in viewVirtualization so viewport
+// tracking stays in sync with what is on screen.
+func virtualizationGuestLines(snapshot model.Snapshot) []int {
+	counts := make([]int, len(snapshot.Virtualization.VirtualMachines))
+	for i, vm := range snapshot.Virtualization.VirtualMachines {
+		count := 1
+		if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
+			count++
+		}
+		if vm.BalloonActualBytes > 0 || vm.BalloonSource != "" {
+			count++
+		}
+		if vm.QMPVersion != "" || vm.QMPError != "" {
+			count++
+		}
+		if len(vm.NUMANodes) > 0 {
+			count++
+		}
+		counts[i] = count
+	}
+	return counts
+}
+
+// virtContentHeaderLines is the number of content lines above the first
+// guest block: section title plus three summary rows and the guests header.
+const virtContentHeaderLines = 6
+
+// followLine adjusts the vertical offset so a block starting at first with
+// height lines is inside the visible area. homeOffset is the offset that
+// shows the very top of the content (including section headers); reaching
+// the first block restores it instead of parking one row down.
+func (m *modelState) followLine(first, height int) {
+	avail := m.height - 8 // six chrome lines, footer line, one row margin
+	if avail < 4 {
+		avail = 4
+	}
+	if first < m.offset {
+		m.offset = first - 1 // keep one context line above the selection
+	}
+	if last := first + height - 1; last >= m.offset+avail {
+		m.offset = last - avail + 1
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+// followVirtualizationSelection keeps the highlighted guest visible when the
+// selection moves beyond the viewport edges.
+func (m *modelState) followVirtualizationSelection() {
+	vms := m.snapshot.Virtualization.VirtualMachines
+	if m.vmSel < 0 || m.vmSel >= len(vms) {
+		return
+	}
+	if m.vmSel == 0 {
+		m.offset = 0
+		return
+	}
+	counts := virtualizationGuestLines(m.snapshot)
+	first := virtContentHeaderLines
+	for i := 0; i < m.vmSel; i++ {
+		first += counts[i]
+	}
+	m.followLine(first, counts[m.vmSel])
+}
+
 // viewVirtualization renders everything QEMU/KVM related: platform state,
 // allocation overcommit, one selectable block per guest, and assigned or
 // passed-through devices. j/k move the guest selection; Enter expands it.
@@ -1402,23 +1492,18 @@ func viewVirtualization(snapshot model.Snapshot, vmSel int) string {
 		b.WriteString("  No virtual machines reported in this capture.\n")
 	}
 	for i, vm := range virt.VirtualMachines {
-		cursor := "  "
-		if i == vmSel {
-			cursor = emph("> ")
-		}
-		vmid := ""
-		if vm.VMID != "" {
-			vmid = " vmid " + vm.VMID
-		}
-		state := "stopped"
-		if vm.Running {
-			state = "running"
-		}
-		fmt.Fprintf(&b, "%s%s%s source=%s pid=%d %s vCPU %d/%d cpu %.1f/%.1f%% mem %.1f/%.1f GiB rss %.1f GiB\n",
-			cursor, vm.Name, vmid, vm.Source, vm.PID, state,
+		row := fmt.Sprintf("%s%s source=%s pid=%d %s vCPU %d/%d cpu %.1f/%.1f%% mem %.1f/%.1f GiB rss %.1f GiB",
+			vm.Name, guestVMIDSuffix(vm), vm.Source, vm.PID, guestState(vm),
 			vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent,
 			float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024),
 			float64(vm.ProcessRSSBytes)/(1024*1024*1024))
+		// The cursor occupies a reserved two-column gutter so moving it never
+		// shifts row content horizontally; the selected row renders bold.
+		if i == vmSel {
+			fmt.Fprintf(&b, "%s\n", emph("> "+row))
+		} else {
+			fmt.Fprintf(&b, "  %s\n", row)
+		}
 		details := make([]string, 0, 5)
 		if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
 			details = append(details, fmt.Sprintf("huge/hugetlb %.1f/%.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))

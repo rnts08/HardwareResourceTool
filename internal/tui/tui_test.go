@@ -683,7 +683,7 @@ func TestVirtualizationTabShowsSummaryGuestsAndPassthrough(t *testing.T) {
 }
 
 func TestVirtualizationTabSelectionAndEnter(t *testing.T) {
-	m := modelState{tab: 3, thresholds: analyze.DefaultThresholds, snapshot: model.Snapshot{
+	m := modelState{tab: 3, height: 24, thresholds: analyze.DefaultThresholds, snapshot: model.Snapshot{
 		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
 			{Name: "guest-a", PID: 1, Running: true},
 			{Name: "guest-b", PID: 2, Running: true},
@@ -732,4 +732,82 @@ func TestProcessListLabelsGuestByPID(t *testing.T) {
 	if !contains(view, "kvm (win2022)") {
 		t.Fatalf("guest label missing: %s", view)
 	}
+}
+
+func TestVirtualizationViewportFollowsSelection(t *testing.T) {
+	guests := make([]model.VirtualMachine, 40)
+	for i := range guests {
+		guests[i] = model.VirtualMachine{Name: fmt.Sprintf("vm%02d", i), PID: i + 1}
+	}
+	m := modelState{tab: 3, height: 24, thresholds: analyze.DefaultThresholds,
+		snapshot: model.Snapshot{Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: guests}}}
+	// Walk down to guest 30; the viewport must follow so it stays visible.
+	for i := 0; i < 30; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = updated.(modelState)
+	}
+	first := virtContentHeaderLines + 30
+	avail := 24 - 8
+	if want := first - avail + 1; m.offset != want {
+		t.Fatalf("offset = %d, want %d", m.offset, want)
+	}
+	view := stripANSI(m.View())
+	if !contains(view, "> vm30") {
+		t.Fatalf("selected guest vm30 not visible:\n%s", tailOf(view, 400))
+	}
+	// Walking back up scrolls the window back with the selection.
+	for i := 0; i < 30; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'k'}})
+		m = updated.(modelState)
+	}
+	if m.offset != 0 || m.vmSel != 0 {
+		t.Fatalf("return to top wrong: offset %d sel %d", m.offset, m.vmSel)
+	}
+}
+
+func TestPickerViewportFollowsSelection(t *testing.T) {
+	guests := make([]model.VirtualMachine, 40)
+	for i := range guests {
+		guests[i] = model.VirtualMachine{Name: fmt.Sprintf("vm%02d", i), PID: i + 1}
+	}
+	snapshot := model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: guests}}
+	m := modelState{tab: 4, height: 24, pickerMode: true, thresholds: analyze.DefaultThresholds,
+		pickerItems: buildPicker(snapshot), snapshot: snapshot}
+	for i := 0; i < 25; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+		m = updated.(modelState)
+	}
+	want := pickerHeaderLines + 25 - (24 - 8) + 1
+	if m.offset != want {
+		t.Fatalf("picker offset = %d, want %d", m.offset, want)
+	}
+}
+
+// TestDetailScrollIndependentFromVMSelection verifies the detail pane opened
+// from the Virtualization window scrolls with j/k without disturbing the
+// guest selection underneath.
+func TestDetailScrollIndependentFromVMSelection(t *testing.T) {
+	m := modelState{tab: 3, height: 24, vmSel: 1, detailMode: true, thresholds: analyze.DefaultThresholds,
+		detailTitle: "VM guest-b", detailLines: make([]string, 60),
+		snapshot: model.Snapshot{Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{
+			{Name: "guest-a"}, {Name: "guest-b"},
+		}}}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	state := updated.(modelState)
+	if !state.detailMode {
+		t.Fatal("detail pane closed unexpectedly")
+	}
+	if state.vmSel != 1 {
+		t.Fatalf("scrolling the pane moved the guest selection: %d", state.vmSel)
+	}
+	if state.offset != 1 {
+		t.Fatalf("pane did not scroll: %d", state.offset)
+	}
+}
+
+func tailOf(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }

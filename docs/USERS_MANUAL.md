@@ -307,9 +307,13 @@ data exists: runtime hugepage placement, balloon actual/reclaimed/target/
 committed/available values with their QMP source, QMP version, base/plugged
 memory and status, NUMA nodeset, and block I/O totals.
 
-j/k move the guest selection and Enter opens the full field-by-field detail
-pane for that VM without going through the picker. Esc returns to the window
-with the selection preserved.
+The selected guest is marked with a bold right arrow in a reserved gutter
+column and renders in bold; moving the cursor never shifts row content.
+j/k move the selection and the window scrolls automatically to keep the
+highlighted guest visible; reaching the first or last guest restores the
+top or bottom of the window. Enter opens the full field-by-field detail
+pane for that VM without going through the picker. Esc returns to the
+window with the selection preserved.
 
 A passthrough section lists devices held by guests: GPUs assigned through
 vfio-pci, pci-stub, or a Proxmox `hostpciN` entry show the owning guest when

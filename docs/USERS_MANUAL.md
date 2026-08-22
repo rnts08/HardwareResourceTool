@@ -1,6 +1,6 @@
-# Hardware Resources Tool — User Manual
+# Hardware Resources Tool User Manual
 
-This manual describes release 0.15.0. Hardware Resources Tool is a read-only
+This manual describes release 0.24.0. Hardware Resources Tool is a read-only
 Linux host diagnostic CLI for bare-metal and virtualization servers,
 especially KVM/QEMU and Proxmox environments. It measures the host and
 reports evidence; it does not implement changes.
@@ -56,7 +56,7 @@ Useful targets:
 
 Build variables can be overridden:
 
-    make linux VERSION=0.15.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+    make linux VERSION=0.24.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
     make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 
 Diagnostic commands require root so /proc, /sys, PCI metadata, cgroups,
@@ -170,7 +170,7 @@ and UTC build time. It does not require root.
 ## 4. TUI windows and controls
 
 The seven windows are Overview, Processes, CPU/Memory, Hardware, Storage, Network,
-and Thermal, in that order. Select them with 1–7. Tab, Right arrow, and l
+and Thermal, in that order. Select them with 1-7. Tab, Right arrow, and l
 move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
 scroll the active window vertically; g and G jump to the top and bottom; < and
 > or Shift+arrows scroll it horizontally; d opens a picker of VMs, GPUs, PCI
@@ -192,7 +192,7 @@ occupies the full terminal height from the first frame.
 CPU/Memory expands the overview numbers into a dedicated window: logical CPU
 count, utilization breakdown with idle history sparkline, load averages,
 context switches and interrupts per second, the active cpufreq governor, and
-the full memory picture — total and available bytes with a used-history
+the full memory picture: total and available bytes with a used-history
 sparkline, swap configuration and activity, the host hugetlb pool and
 per-NUMA-node pools, NUMA node count with remote events, transparent huge
 page policy, swappiness, and process limits.
@@ -201,7 +201,7 @@ Pressing `p` toggles the CPU power advisor. It lists every cpufreq policy
 with its related CPUs, current governor, energy performance preference (EPP),
 and the alternatives the kernel exposes. Where a common alternative
 (`performance`/`powersave` governor, `balance_performance`/`performance` EPP)
-differs from the current setting, it prints the exact command to switch — for
+differs from the current setting, it prints the exact command to switch, for
 example `echo performance | sudo tee /sys/devices/system/cpu/cpufreq/policy0/scaling_governor`.
 The tool is read-only: these commands are shown for you to copy, never
 executed.
@@ -270,7 +270,10 @@ ethtool and ETHTOOL_G* reads, including channels, pause parameters,
 timestamping, feature bitsets, coalescing, RSS, and driver-info strings. It
 does not send SET, firmware-update, EEPROM, or cable-test operations.
 
-### Findings
+### Findings view
+
+Findings are not a window in the tab bar; press f to show or hide the
+findings overlay from any window.
 
 Findings have critical, warning, or info severity and include category, title,
 evidence, and recommendation. They are advisories, not proof of causation.
@@ -312,7 +315,7 @@ type, speed, configured speed, and EDAC corrected/uncorrected errors where
 available.
 
 Below the memory devices, the Hardware window lists unknown or unclaimed PCI
-devices — entries with no driver bound whose class code is unclassified
+devices: entries with no driver bound whose class code is unclassified
 (`0xffxxxx`) or whose vendor id is absent or all-ones. These often indicate
 firmware that needs enabling, a missing driver, or a device intentionally
 left unbound for passthrough. A USB section follows: bus ID, vendor/product
@@ -372,9 +375,9 @@ reported as `none detected` when KVM/QEMU is present but unidentified), limits,
 sorted sysctls, real filesystems, physical networks (unknown FEC/RSS render as
 `-`), PCIe devices with useful data, GPUs, USB devices with truncated serials
 and usbmon availability, inventory totals, findings, and the collector-error
-count with each error listed individually. Zero-valued optional fields — QMP,
-balloon, hugepage, NUMA segments on VM lines; missing thermal limits; host/init
-limits — are omitted rather than printed as zeros. It is intended for operators
+count with each error listed individually. Zero-valued optional fields (QMP,
+balloon, hugepage, and NUMA segments on VM lines, missing thermal limits,
+host/init limits) are omitted rather than printed as zeros. It is intended for operators
 and incident records; JSON is the complete machine interface.
 
 Text units are percentages, GiB for memory, MiB for VM RSS/I/O, KiB/s for VM
@@ -414,7 +417,7 @@ is absent.
 | cpu.load_1m, load_5m, load_15m | Linux load averages |
 | cpu.context_switches_per_second | context-switch rate |
 | cpu.interrupts_per_second | interrupt rate |
-| top_processes | up to ten highest-CPU host processes: pid, name, cpu_percent, rss_bytes, state |
+| top_processes | up to ten highest-CPU host processes: pid, name, cmdline, cpu_percent, rss_bytes, state, jiffies |
 
 The cpu_percent in top_processes is the rate between the last two samples;
 the first sample of a run reports zero until a baseline exists.
@@ -428,6 +431,12 @@ the first sample of a run reports zero until a baseline exists.
 
 disks entries contain name, cumulative read_bytes/write_bytes,
 reads_per_second, writes_per_second, throughput rates, and in_flight.
+Device-mapper devices add dm_name, dm_uuid, and slaves (the backing physical
+block devices). Device-mapper entries are annotated with their mapper name in
+text output so volume I/O can be traced to its disks. The cpu_power_policies
+list contains one entry per cpufreq policy: policy, cpus, governor,
+available_governors, epp, and available_epp, refreshed every snapshot.
+
 filesystems entries contain device, mount_point, type, total_bytes,
 available_bytes, used_percent, and read_only.
 
@@ -493,6 +502,14 @@ fifth snapshot, these fields reflect the most recent heavy collection.
 VM nics include guest type/source/target/MAC, host bridge/NIC correlation,
 and host RX/TX rates when resolvable. VM PCI addresses identify attachments;
 they do not indicate device activity.
+
+### USB
+
+usb_devices is collected once per collector lifetime from sysfs. Each entry
+contains bus_id, vendor_id, product_id, manufacturer, product, serial,
+speed_mbps (fractional for low-speed devices such as 1.5), and class.
+Interface directories and root hubs are excluded. usbmon_available reports
+whether /sys/kernel/debug/usb/usbmon exists for packet-level tracing.
 
 ### NUMA and system
 

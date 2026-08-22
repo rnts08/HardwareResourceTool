@@ -5,10 +5,10 @@ and virtualization servers. It compares observed resource use with host
 capacity, identifies bottlenecks, and produces advisory findings that an
 operator can investigate and apply separately.
 
-The current release is `0.15.0` (`v0.15.0`). It is focused on Linux hosts,
-especially KVM/QEMU and Proxmox-style virtualization servers. It does not
-change kernel settings, device settings, guest settings, storage, networking,
-or QEMU state.
+The tool targets Linux hosts, especially KVM/QEMU and Proxmox-style
+virtualization servers. It does not change kernel settings, device settings,
+guest settings, storage, networking, or QEMU state. The `version` command
+prints build metadata for the installed binary.
 
 For installation and privilege choices, see [INSTALL.md](INSTALL.md). For the
 complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
@@ -68,6 +68,13 @@ complete interpretation guide, see [USERS_MANUAL.md](USERS_MANUAL.md).
   statistics add cumulative per-device read/write bytes and operations.
 - Read-only QMP QEMU version, memory-size summary, and vCPU state counts when
   the running QEMU exposes those commands.
+- cpufreq policy inventory per snapshot: governor and energy performance
+  preference with the alternatives the kernel exposes, grouped when adjacent
+  policies share settings.
+- USB device inventory from sysfs (bus ID, vendor/product IDs, strings,
+  serial, speed) plus usbmon availability. Unknown or unclaimed PCI devices,
+  meaning no driver bound with an unclassified class code or absent or
+  all-ones vendor id, are listed separately.
 - Advisory findings with severity, evidence, and recommendations.
 - Bounded read-only kernel/system log event summaries for OOM, I/O, PCIe/AER,
   EDAC/MCE, NVIDIA Xid, storage resets, and link failures. Only the tails of
@@ -129,7 +136,7 @@ make clean      # remove generated binaries and coverage files
 Build variables can be overridden:
 
 ```sh
-make linux VERSION=0.15.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
+make linux VERSION=0.24.0 LINUX_TARGET=/tmp/hardware-resources-linux-amd64
 make install PREFIX=/opt/hardware-resources DESTDIR=/staging
 ```
 
@@ -191,38 +198,42 @@ sudo ./hardware-resources tui --interval 2s
 ```
 
 The interval has a 500 ms minimum. The dashboard keeps at most 60 snapshots
-for its CPU-idle and memory-used sparklines. Use:
+for its sparklines. Use:
 
-- `1`–`7` to select Overview, Storage, Network, Findings, Hardware, Thermal,
-  or Top processes.
-- `Tab`, Right arrow, or `l` for the next view.
-- `Shift+Tab`, Left arrow, or `h` for the previous view.
-- `j`/`k` and Page Up/Down to scroll the active view vertically.
-- `<`/`>` or Shift+arrows to scroll the active view horizontally.
-- `d` on the Hardware tab to open a picker of VMs, GPUs, PCI devices, and
-  DIMMs; `j`/`k` select, Enter expands a field-by-field detail pane, and Esc
-  closes it.
+- `1`-`7` to select Overview, Processes, CPU/Memory, Hardware, Storage,
+  Network, or Thermal.
+- `Tab`, Right arrow, or `l` for the next view; `Shift+Tab`, Left arrow, or
+  `h` for the previous view.
+- `j`/`k` and Page Up/Down to scroll the active view; `g`/`G` jump to the top
+  and bottom; `<`/`>` or Shift+arrows scroll horizontally.
+- `f` to toggle the findings view, color-coded by severity.
+- `d` from any window to open a picker of VMs, GPUs, PCI devices, DIMMs,
+  block devices, and NICs. `j`/`k` select, Enter opens a field-by-field
+  detail pane. Clicking a row selects it; clicking the selected row opens
+  its pane. Esc closes the pane, then the picker.
+- On Processes: `c` toggles full command lines; `C`/`M`/`L` sort by CPU rate,
+  memory, and cumulative CPU time.
+- On CPU/Memory: `p` toggles the cpufreq power advisor, which shows current
+  and available governors/EPP with the exact commands to change them. The
+  tool never executes these commands.
 - Mouse wheel scrolls the active view; clicking a tab header row switches
   views.
-- `Space` to pause and resume live collection.
-- `r` to force a refresh before the next interval.
-- `?` for help.
+- `Space` pauses and resumes live collection.
+- `r` forces a refresh before the next interval.
+- `?` for help; Esc closes help first when it is open.
 - `q` or `Ctrl+C` to exit.
 
-The Overview reports kernel/system event counts as deltas since the previous
-sample rather than cumulative totals. The Top processes view lists the ten
-highest-CPU host processes with per-second CPU rate, resident set size, and
-state, and flags QEMU/KVM host processes with a `[QEMU]` marker.
+Each window keeps its own scroll position, occupies the full terminal height,
+and the active tab is highlighted. The Processes window lists the ten
+highest-CPU host processes with per-second CPU rate, resident set size, and a
+friendly state such as Sleeping (S), and flags QEMU/KVM host processes with a
+`[QEMU]` marker.
 
-Findings are color-coded by severity (critical, warning, info) and collection
-is gated so a slow snapshot cannot overlap the next one. The TUI accepts the
-same `--cpu-idle-critical`, `--iowait-warning`, `--memory-used-critical`,
-`--filesystem-used-warning`, and `--filesystem-used-critical` flags as
-`check`/`report`, so live findings match report findings.
-
-The view renderer clips narrow or short terminals instead of assuming a fixed
-terminal size; clipped content can be reached with the scroll keys. Collection
-errors are shown at the bottom of the dashboard.
+Collection is gated so a slow snapshot cannot overlap the next one. The TUI
+accepts the same threshold flags as `check`/`report`, so live findings match
+report findings. The renderer clips narrow or short terminals instead of
+assuming a fixed size; clipped content can be reached with the scroll keys.
+Collection errors are shown at the bottom of the dashboard.
 
 ## Root live capture
 
@@ -273,7 +284,7 @@ fields or collector errors rather than synthetic zero values.
 
 ## Output choices
 
-Use text output for an operator’s quick review. Use JSON for automation,
+Use text output for an operator's quick review. Use JSON for automation,
 comparison, archival, and detailed field inspection:
 
 ```sh

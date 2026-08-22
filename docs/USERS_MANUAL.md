@@ -170,13 +170,14 @@ and UTC build time. It does not require root.
 
 ## 4. TUI windows and controls
 
-The seven windows are Overview, Processes, CPU/Memory, Hardware, Storage, Network,
-and Thermal, in that order. Select them with 1-7. Tab, Right arrow, and l
+The eight windows are Overview, Processes, CPU/Memory, Virtualization,
+Hardware, Storage, Network, and Thermal, in that order. Select them with 1-8. Tab, Right arrow, and l
 move forward. Shift+Tab, Left arrow, and h move backward. j/k and Page Up/Down
 scroll the active window vertically; g and G jump to the top and bottom; < and
 > or Shift+arrows scroll it horizontally; d opens a picker of VMs, GPUs, PCI
 devices, DIMMs, block devices, and NICs from any window where j/k select and
-Enter expands a field-by-field detail pane; f toggles the findings view; c toggles full
+Enter expands a field-by-field detail pane; on the Virtualization window j/k select a guest
+and Enter expands it directly; f toggles the findings view; c toggles full
 command lines and C/M/L change the sort on Processes; p toggles the cpufreq
 power advisor on CPU/Memory; Esc closes the pane,
 picker, findings view, or help; clicking a tab header row switches views;
@@ -291,12 +292,36 @@ critical threshold and active alarms, stalled fans, an exhausted hugetlb pool,
 a powersave governor advisory on virtualization hosts where the kernel also
 exposes performance, and collection errors.
 
+### Virtualization
+
+The Virtualization window collects everything QEMU/KVM related. The header
+shows the detected platform (kvm/libvirt, kvm/qemu, or kvm/proxmox), whether
+KVM and QEMU were detected, total and running guest counts, and the vCPU and
+memory allocation overcommit ratios computed against host capacity.
+
+Each guest renders as one block: name (with VMID where available), source
+(libvirt, Proxmox configuration, or proc fallback), PID, running state,
+configured versus QMP-enabled vCPU count, process and cgroup CPU percentage,
+current versus configured memory, and RSS. Indented sub-lines appear when the
+data exists: runtime hugepage placement, balloon actual/reclaimed/target/
+committed/available values with their QMP source, QMP version, base/plugged
+memory and status, NUMA nodeset, and block I/O totals.
+
+j/k move the guest selection and Enter opens the full field-by-field detail
+pane for that VM without going through the picker. Esc returns to the window
+with the selection preserved.
+
+A passthrough section lists devices held by guests: GPUs assigned through
+vfio-pci, pci-stub, or a Proxmox `hostpciN` entry show the owning guest when
+known, and any PCI function bound to vfio-pci or pci-stub is listed even when
+no guest correlation exists.
+
 ### Hardware
 
 The window opens with a one-line inventory summary (PCI, GPU, DIMM, block
 device, NIC, and USB counts), then the sections in order: NVIDIA GPUs,
-KVM/QEMU domains, memory devices, the full PCIe device table, unknown or
-unclaimed PCI devices, and USB devices. The most operationally important
+memory devices, the full PCIe device table, unknown or unclaimed PCI devices,
+and USB devices. Guest state lives in the Virtualization window. The most operationally important
 sections therefore appear before the long PCIe list; every PCI device remains
 listed and expandable through the picker.
 
@@ -320,11 +345,7 @@ zero values do not mean zero GPU load. If the device is bound to `vfio-pci` or
 passed through to a KVM guest; host NVML usage cannot be collected in that
 state.
 
-KVM/QEMU rows show VMID where available, running state, configured vCPUs, process/cgroup CPU,
-configured/current memory, QEMU RSS, I/O, balloon values, guest-reported
-memory, and NUMA nodes. When QMP is reachable they also add cumulative block
-statistics per device (read/write bytes and operations from the read-only
-`query-blockstats` accounting query). Memory-device rows show locator, size,
+Memory-device rows show locator, size,
 type, speed, configured speed, and EDAC corrected/uncorrected errors where
 available.
 
@@ -386,6 +407,7 @@ Text output contains timestamp with collection duration, CPU, memory/system
 plus one `Cpufreq:` line per distinct governor/EPP setting (identical adjacent
 policies are compressed, e.g. `policies 0-7`), virtualization (the platform is
 reported as `none detected` when KVM/QEMU is present but unidentified), limits,
+passthrough devices under the virtualization section,
 sorted sysctls, real filesystems, physical networks (unknown FEC/RSS render as
 `-`), PCIe devices with useful data, GPUs, USB devices with truncated serials
 and usbmon availability, inventory totals, findings, and the collector-error

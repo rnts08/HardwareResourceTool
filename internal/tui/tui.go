@@ -41,6 +41,7 @@ type modelState struct {
 	powerMode      bool
 	awaitingFirst  bool
 	spinnerIdx     int
+	vmSel          int
 	collectTime    time.Duration
 	pickerMode     bool
 	detailMode     bool
@@ -56,11 +57,12 @@ type pickerItem struct {
 	label string
 }
 
-// Tab order: Overview / Top / CPU-Memory / Hardware / Storage / Network /
-// Thermal. Findings is available through the f shortcut instead of a tab.
-const tabCount = 7
+// Tab order: Overview / Processes / CPU-Memory / Virtualization / Hardware /
+// Storage / Network / Thermal. Findings is available through the f shortcut
+// instead of a tab.
+const tabCount = 8
 
-var tabs = []string{"Overview", "Processes", "CPU/Memory", "Hardware", "Storage", "Network", "Thermal"}
+var tabs = []string{"Overview", "Processes", "CPU/Memory", "Virtualization", "Hardware", "Storage", "Network", "Thermal"}
 
 var (
 	criticalStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
@@ -165,9 +167,18 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.pickerMode {
 				m.openDetail()
+				return m, nil
+			}
+			// On the Virtualization tab Enter expands the highlighted guest
+			// directly, without going through the picker.
+			if vms := m.snapshot.Virtualization.VirtualMachines; m.tab == 3 && !m.showHelp && m.vmSel >= 0 && m.vmSel < len(vms) {
+				title, lines := vmDetail(vms[m.vmSel])
+				m.detailTitle, m.detailLines = title, lines
+				m.detailMode = true
+				m.offset, m.xoffset = 0, 0
 			}
 			return m, nil
-		case "1", "2", "3", "4", "5", "6", "7":
+		case "1", "2", "3", "4", "5", "6", "7", "8":
 			if m.pickerMode || m.detailMode || m.showHelp {
 				return m, nil
 			}
@@ -212,12 +223,22 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if m.tab == 3 && !m.detailMode && !m.showHelp && len(m.snapshot.Virtualization.VirtualMachines) > 0 {
+				if m.vmSel < len(m.snapshot.Virtualization.VirtualMachines)-1 {
+					m.vmSel++
+				}
+				return m, nil
+			}
 			m.offset += pageStep(m.height, msg.String())
 		case "k", "up":
 			if m.pickerMode && !m.detailMode {
 				if m.pickerSel > 0 {
 					m.pickerSel--
 				}
+				return m, nil
+			}
+			if m.tab == 3 && !m.detailMode && !m.showHelp && m.vmSel > 0 {
+				m.vmSel--
 				return m, nil
 			}
 			m.offset -= pageStep(m.height, msg.String())
@@ -302,6 +323,9 @@ func (m modelState) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pickerSel >= len(m.pickerItems) {
 				m.pickerSel = 0
 			}
+		}
+		if m.vmSel >= len(msg.Virtualization.VirtualMachines) {
+			m.vmSel = 0
 		}
 		m.history = append(m.history, msg)
 		if len(m.history) > historyLimit {
@@ -455,7 +479,7 @@ func (m modelState) View() string {
 		}))
 	} else {
 		footer.WriteString(hintLine([][2]string{
-			{"1-7:", "tabs"}, {"f", "findings"}, {"h/l", "prev/next"}, {"j/k", "scroll"},
+			{"1-8:", "tabs"}, {"f", "findings"}, {"h/l", "prev/next"}, {"j/k", "scroll"},
 			{"g/G", "top/bottom"}, {"</>", "horizontal"}, {"d", "detail"}, {"space", "pause"},
 			{"r", "refresh"}, {"?", "help"}, {"q", "quit"},
 		}))
@@ -863,12 +887,14 @@ func (m modelState) tabContent() string {
 	case 2:
 		return viewCPUMemory(m.snapshot, m.history, m.thresholds, m.powerMode)
 	case 3:
-		return viewHardware(m.snapshot)
+		return viewVirtualization(m.snapshot, m.vmSel)
 	case 4:
-		return viewStorage(m.snapshot)
+		return viewHardware(m.snapshot)
 	case 5:
-		return viewNetwork(m.snapshot)
+		return viewStorage(m.snapshot)
 	case 6:
+		return viewNetwork(m.snapshot)
+	case 7:
 		return viewThermal(m.snapshot)
 	default:
 		return viewOverview(m.snapshot, m.history, m.thresholds)
@@ -1049,7 +1075,7 @@ func renderHelp(thresholds analyze.Thresholds) string {
 	return strings.Join([]string{
 		"Help",
 		"",
-		"  1-7 or h/l/tab     switch tabs (Overview, Processes, CPU/Memory, Hardware, Storage, Network, Thermal)",
+		"  1-8 or h/l/tab     switch tabs (Overview, Processes, CPU/Memory, Virtualization, Hardware, Storage, Network, Thermal)",
 		"  f                  toggle the findings view",
 		"  c                  on Processes: toggle full command lines",
 		"  C / M / L          on Processes: sort by cpu, memory, lifetime cpu",
@@ -1058,7 +1084,7 @@ func renderHelp(thresholds analyze.Thresholds) string {
 		"  g / G              jump to the top / bottom of the active view",
 		"  </>, shift+arrows  scroll the active view horizontally",
 		"  d                  pick a VM/GPU/PCI/DIMM to expand (works on every tab)",
-		"  enter              open the selected item's detail pane",
+		"  enter              open the selected item's detail pane (on Virtualization, expands the highlighted guest)",
 		"  esc                close detail pane, picker, findings, or help",
 		"  space              pause/resume live collection",
 		"  r                  force a refresh now",
@@ -1306,7 +1332,6 @@ func viewHardware(snapshot model.Snapshot) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Hardware: %d PCI devices, %d GPUs, %d DIMMs, %d block devices, %d NICs, %d USB\n", len(snapshot.PCI), len(snapshot.GPUs), len(snapshot.MemoryDevices), len(snapshot.Disks), len(snapshot.Networks), len(snapshot.USB))
 	b.WriteString(renderGPUs(snapshot))
-	b.WriteString(renderKVMDomains(snapshot))
 	b.WriteString(renderMemoryDevices(snapshot))
 	b.WriteString("\nPCIe devices\n")
 	for _, device := range snapshot.PCI {
@@ -1346,31 +1371,141 @@ func renderGPUs(snapshot model.Snapshot) string {
 	return b.String()
 }
 
-// renderKVMDomains lists guest host-processes with runtime and QMP state.
-func renderKVMDomains(snapshot model.Snapshot) string {
-	if !snapshot.Virtualization.QEMUDetected && len(snapshot.Virtualization.VirtualMachines) == 0 {
-		return ""
-	}
+// viewVirtualization renders everything QEMU/KVM related: platform state,
+// allocation overcommit, one selectable block per guest, and assigned or
+// passed-through devices. j/k move the guest selection; Enter expands it.
+func viewVirtualization(snapshot model.Snapshot, vmSel int) string {
 	var b strings.Builder
-	b.WriteString("KVM/QEMU domains\n")
-	for _, vm := range snapshot.Virtualization.VirtualMachines {
-		segments := []string{fmt.Sprintf("%-20s run=%t vCPU %d/%d CPU %5.1f/%5.1f%% memory %6.1f/%6.1f GiB RSS %6.1f MiB", vm.Name, vm.Running, vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent, float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024), float64(vm.ProcessRSSBytes)/(1024*1024))}
+	virt := snapshot.Virtualization
+	platform := virt.Hypervisor
+	if platform == "" {
+		if virt.QEMUDetected || virt.KVMAvailable {
+			platform = "none detected"
+		} else {
+			platform = "no KVM/QEMU detected"
+		}
+	}
+	b.WriteString("Virtualization\n")
+	fmt.Fprintf(&b, "  platform         %s  kvm %t  qemu %t\n", platform, virt.KVMAvailable, virt.QEMUDetected)
+	running := 0
+	for _, vm := range virt.VirtualMachines {
+		if vm.Running {
+			running++
+		}
+	}
+	fmt.Fprintf(&b, "  guests           %d total, %d running\n", len(virt.VirtualMachines), running)
+	fmt.Fprintf(&b, "  allocation       vCPU %d (%.2fx overcommit)  memory %.1f GiB (%.2fx overcommit)\n",
+		virt.AllocatedVCPUs, virt.VCPUOvercommitRatio, float64(virt.AllocatedMemoryBytes)/(1024*1024*1024), virt.MemoryOvercommitRatio)
+
+	b.WriteString("\nGuests (j/k select, enter expands)\n")
+	if len(virt.VirtualMachines) == 0 {
+		b.WriteString("  No virtual machines reported in this capture.\n")
+	}
+	for i, vm := range virt.VirtualMachines {
+		cursor := "  "
+		if i == vmSel {
+			cursor = emph("> ")
+		}
+		vmid := ""
+		if vm.VMID != "" {
+			vmid = " vmid " + vm.VMID
+		}
+		state := "stopped"
+		if vm.Running {
+			state = "running"
+		}
+		fmt.Fprintf(&b, "%s%s%s source=%s pid=%d %s vCPU %d/%d cpu %.1f/%.1f%% mem %.1f/%.1f GiB rss %.1f GiB\n",
+			cursor, vm.Name, vmid, vm.Source, vm.PID, state,
+			vm.ConfiguredVCPUs, vm.QMPEnabledVCPUs, vm.CPUPercent, vm.CgroupCPUPercent,
+			float64(vm.MemoryCurrentBytes)/(1024*1024*1024), float64(vm.ConfiguredMemoryBytes)/(1024*1024*1024),
+			float64(vm.ProcessRSSBytes)/(1024*1024*1024))
+		details := make([]string, 0, 5)
 		if vm.RuntimeAnonHugeBytes > 0 || vm.RuntimeHugetlbBytes > 0 {
-			segments = append(segments, fmt.Sprintf("huge/hugetlb %6.1f/%6.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))
+			details = append(details, fmt.Sprintf("huge/hugetlb %.1f/%.1f MiB", float64(vm.RuntimeAnonHugeBytes)/(1024*1024), float64(vm.RuntimeHugetlbBytes)/(1024*1024)))
+		}
+		if vm.BalloonActualBytes > 0 || vm.BalloonSource != "" {
+			details = append(details, fmt.Sprintf("balloon actual %.1f GiB reclaimed %.1f target %.1f committed %.1f available %.1f (source %s)",
+				float64(vm.BalloonActualBytes)/(1024*1024*1024), float64(vm.BalloonReclaimedBytes)/(1024*1024*1024),
+				float64(vm.BalloonTargetBytes)/(1024*1024*1024), float64(vm.BalloonCommittedBytes)/(1024*1024*1024),
+				float64(vm.BalloonAvailableBytes)/(1024*1024*1024), orDash(vm.BalloonSource)))
 		}
 		if vm.QMPVersion != "" {
-			segments = append(segments, fmt.Sprintf("QMP %s base/plug %6.1f/%6.1f GiB", vm.QMPVersion, float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024)))
+			details = append(details, fmt.Sprintf("QMP %s base/plug %.1f/%.1f GiB status %s", vm.QMPVersion,
+				float64(vm.QMPBaseMemoryBytes)/(1024*1024*1024), float64(vm.QMPPluggedMemoryBytes)/(1024*1024*1024), orDash(vm.QMPStatus)))
+		} else if vm.QMPError != "" {
+			details = append(details, "QMP unavailable: "+vm.QMPError)
 		}
 		if len(vm.NUMANodes) > 0 {
-			segments = append(segments, fmt.Sprintf("NUMA %v", vm.NUMANodes))
+			details = append(details, fmt.Sprintf("NUMA %v", vm.NUMANodes))
 		}
-		fmt.Fprintf(&b, "  %s\n", strings.Join(segments, "  "))
-		if len(vm.QMPBlockDevices) > 0 {
-			fmt.Fprintf(&b, "    block I/O rd %.1f MiB/%d ops wr %.1f MiB/%d ops across %d device(s)\n", float64(vm.QMPBlockReadBytes)/(1024*1024), vm.QMPBlockReadOps, float64(vm.QMPBlockWriteBytes)/(1024*1024), vm.QMPBlockWriteOps, len(vm.QMPBlockDevices))
+		for _, detail := range details {
+			fmt.Fprintf(&b, "      %s\n", detail)
 		}
 	}
-	b.WriteString("\n")
+
+	b.WriteString("\nPassthrough / assigned devices\n")
+	assignments := passthroughAssignments(snapshot)
+	if len(assignments) == 0 {
+		b.WriteString("  None; no devices are bound to vfio-pci/pci-stub or attached to a guest.\n")
+	}
+	for _, line := range assignments {
+		fmt.Fprintf(&b, "  %s\n", line)
+	}
 	return b.String()
+}
+
+// passthroughAssignments summarizes devices held by guests: GPUs matched to a
+// VM name when known, plus any PCI function bound to vfio-pci or pci-stub.
+func passthroughAssignments(snapshot model.Snapshot) []string {
+	lines := make([]string, 0)
+	seen := map[string]bool{}
+	add := func(address, description string) {
+		if seen[address] {
+			return
+		}
+		seen[address] = true
+		lines = append(lines, fmt.Sprintf("%-16s %s", address, description))
+	}
+	vmByAddress := map[string]string{}
+	for _, vm := range snapshot.Virtualization.VirtualMachines {
+		for _, address := range vm.PCIAddresses {
+			vmByAddress[normalizePCIAddressTUI(address)] = vm.Name
+		}
+	}
+	for _, gpu := range snapshot.GPUs {
+		if !gpu.PassedThrough {
+			continue
+		}
+		name := gpu.Name
+		if name == "" {
+			name = gpu.VendorID + ":" + gpu.DeviceID
+		}
+		description := fmt.Sprintf("GPU %-22s", name)
+		if gpu.PassedThroughVM != "" {
+			description += "  assigned to " + gpu.PassedThroughVM
+		} else if vm := vmByAddress[normalizePCIAddressTUI(gpu.Address)]; vm != "" {
+			description += "  assigned to " + vm
+		}
+		add(normalizePCIAddressTUI(gpu.Address), description)
+	}
+	for _, device := range snapshot.PCI {
+		driver := strings.ToLower(strings.TrimSpace(device.Driver))
+		if driver != "vfio-pci" && driver != "pci-stub" {
+			continue
+		}
+		description := fmt.Sprintf("PCI class %-10s bound %s", device.Class, driver)
+		if vm := vmByAddress[normalizePCIAddressTUI(device.Address)]; vm != "" {
+			description += "  assigned to " + vm
+		}
+		add(normalizePCIAddressTUI(device.Address), description)
+	}
+	return lines
+}
+
+// normalizePCIAddressTUI lowercases and strips a leading 0x prefix segment
+// spacing so addresses compare consistently inside the TUI.
+func normalizePCIAddressTUI(address string) string {
+	return strings.ToLower(strings.TrimSpace(address))
 }
 
 // renderMemoryDevices lists DIMM inventory with EDAC counters.
@@ -1533,15 +1668,18 @@ func viewTop(snapshot model.Snapshot, history []model.Snapshot, sortKey byte, sh
 		})
 	}
 	for _, process := range processes {
-		qemu := ""
-		if isQEMUSample(process, snapshot.Virtualization.VirtualMachines) {
-			qemu = "  [QEMU]"
-		}
 		name := process.Name
 		if showCmdline && process.Cmdline != "" {
 			name = process.Cmdline
 		}
-		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %-14s%s\n", name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), processStateLabel(process.State), qemu)
+		// A matched KVM host process is labeled with its guest so the top
+		// consumer is identifiable as a specific virtual machine.
+		if vmName := vmNameForProcess(process, snapshot.Virtualization.VirtualMachines); vmName != "" {
+			name += fmt.Sprintf(" (%s)", vmName)
+		} else if isQEMUSample(process, snapshot.Virtualization.VirtualMachines) {
+			name += "  [QEMU]"
+		}
+		line := fmt.Sprintf("  %-24s pid %7d  cpu %6.1f%%  rss %10s  state %-14s\n", name, process.PID, process.CPUPercent, formatBytes(process.RSSBytes), processStateLabel(process.State))
 		if process.CPUPercent >= 90 {
 			line = markWarning + line
 		}
@@ -1574,15 +1712,21 @@ func processStateLabel(state string) string {
 }
 
 func isQEMUSample(process model.ProcessSample, vms []model.VirtualMachine) bool {
-	if strings.HasPrefix(process.Name, "qemu-system-") || process.Name == "qemu-kvm" {
+	if vmNameForProcess(process, vms) != "" {
 		return true
 	}
+	return strings.HasPrefix(process.Name, "qemu-system-") || process.Name == "qemu-kvm" || process.Name == "kvm"
+}
+
+// vmNameForProcess resolves the guest name behind a KVM host process by PID.
+// An empty result means the process is not (or not yet) a known guest.
+func vmNameForProcess(process model.ProcessSample, vms []model.VirtualMachine) string {
 	for _, vm := range vms {
-		if vm.PID == process.PID {
-			return true
+		if vm.PID == process.PID && vm.Name != "" {
+			return vm.Name
 		}
 	}
-	return false
+	return ""
 }
 
 func historyValues(history []model.Snapshot, value func(model.Snapshot) float64) []float64 {

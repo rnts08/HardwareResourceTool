@@ -25,7 +25,7 @@ func TestSparklineClampsAndPreservesSamples(t *testing.T) {
 
 func TestViewShowsTabsAndEmptyState(t *testing.T) {
 	view := stripANSI((modelState{tab: 1, thresholds: analyze.DefaultThresholds}).View())
-	for _, expected := range []string{"[2 Processes]", "No process samples available.", "1-7: tabs"} {
+	for _, expected := range []string{"[2 Processes]", "No process samples available.", "1-8: tabs"} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -42,8 +42,8 @@ func TestFindingsShortcutShowsFindings(t *testing.T) {
 }
 
 func TestViewShowsThermalTabAndEmptyState(t *testing.T) {
-	view := stripANSI((modelState{tab: 6, thresholds: analyze.DefaultThresholds}).View())
-	for _, expected := range []string{"[7 Thermal]", "No thermal sensors reported."} {
+	view := stripANSI((modelState{tab: 7, thresholds: analyze.DefaultThresholds}).View())
+	for _, expected := range []string{"[8 Thermal]", "No thermal sensors reported."} {
 		if !contains(view, expected) {
 			t.Fatalf("view missing %q: %s", expected, view)
 		}
@@ -103,15 +103,20 @@ func TestViewTopMarksQEMUProcesses(t *testing.T) {
 		TopProcesses: []model.ProcessSample{
 			{PID: 42, Name: "qemu-system-x86_64", CPUPercent: 10},
 			{PID: 99, Name: "worker", CPUPercent: 5},
-			{PID: 1234, Name: "qemu", CPUPercent: 3},
+			{PID: 1234, Name: "kvm", CPUPercent: 3},
 		},
 		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "guest-a", PID: 1234}}},
 	}
 	view := stripANSI(viewTop(snapshot, nil, 0, false))
-	if count := strings.Count(view, "[QEMU]"); count != 2 {
-		t.Fatalf("expected 2 QEMU markers, got %d: %s", count, view)
+	// The matched KVM host process is labeled with its guest name instead of
+	// the generic marker; unmatched QEMU binaries keep the [QEMU] marker.
+	if count := strings.Count(view, "[QEMU]"); count != 1 {
+		t.Fatalf("expected 1 generic QEMU marker, got %d: %s", count, view)
 	}
-	if !contains(view, "qemu-system-x86_64       pid      42") {
+	if !contains(view, "kvm (guest-a)") {
+		t.Fatalf("guest-labeled process missing: %s", view)
+	}
+	if !contains(view, "qemu-system-x86_64  [QEMU] pid      42") {
 		t.Fatalf("qemu-system missing from view: %s", view)
 	}
 }
@@ -621,13 +626,12 @@ func TestLoadingViewShowsUntilFirstSnapshot(t *testing.T) {
 
 func TestHardwareSectionOrder(t *testing.T) {
 	snapshot := model.Snapshot{
-		GPUs:           []model.GPU{{Address: "0000:01:00.0", VendorID: "0x10de", DeviceID: "0x2684", Name: "L40S", NVML: true}},
-		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{{Name: "vm1"}}},
-		MemoryDevices:  []model.MemoryDevice{{Locator: "DIMM_A1", SizeBytes: 32 << 30}},
-		PCI:            []model.PCIDevice{{Address: "0000:00:1f.6", VendorID: "0x8086", DeviceID: "0x15f3", Class: "0x0200", Driver: "e1000e"}},
+		GPUs:          []model.GPU{{Address: "0000:01:00.0", VendorID: "0x10de", DeviceID: "0x2684", Name: "L40S", NVML: true}},
+		MemoryDevices: []model.MemoryDevice{{Locator: "DIMM_A1", SizeBytes: 32 << 30}},
+		PCI:           []model.PCIDevice{{Address: "0000:00:1f.6", VendorID: "0x8086", DeviceID: "0x15f3", Class: "0x0200", Driver: "e1000e"}},
 	}
 	view := stripANSI(viewHardware(snapshot))
-	order := []string{"NVIDIA GPUs", "KVM/QEMU domains", "Memory devices", "PCIe devices", "Unknown / unclaimed PCI devices", "USB devices"}
+	order := []string{"NVIDIA GPUs", "Memory devices", "PCIe devices", "Unknown / unclaimed PCI devices", "USB devices"}
 	last := -1
 	for _, section := range order {
 		idx := strings.Index(view, section)
@@ -639,7 +643,93 @@ func TestHardwareSectionOrder(t *testing.T) {
 		}
 		last = idx
 	}
-	if strings.Index(view, "0000:00:1f.6") < strings.Index(view, "L40S") {
-		t.Fatalf("PCI table still precedes GPUs:\n%s", view)
+	// Guest state belongs to the Virtualization window now.
+	snapshot.Virtualization = model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{{Name: "vm1"}}}
+	if contains(stripANSI(viewHardware(snapshot)), "KVM/QEMU domains") {
+		t.Fatal("hardware view still renders guest domains")
+	}
+}
+
+func TestVirtualizationTabShowsSummaryGuestsAndPassthrough(t *testing.T) {
+	m := modelState{tab: 3, thresholds: analyze.DefaultThresholds, snapshot: model.Snapshot{
+		Virtualization: model.Virtualization{
+			QEMUDetected: true, Hypervisor: "kvm/libvirt",
+			AllocatedVCPUs: 8, VCPUOvercommitRatio: 1.33,
+			AllocatedMemoryBytes: 16 << 30, MemoryOvercommitRatio: 1.0,
+			VirtualMachines: []model.VirtualMachine{{
+				Name: "web01", PID: 4321, Running: true, Source: "libvirt",
+				ConfiguredVCPUs: 4, CPUPercent: 22.5, ConfiguredMemoryBytes: 8 << 30,
+				MemoryCurrentBytes: 8 << 30, ProcessRSSBytes: 7 << 30,
+				PCIAddresses: []string{"0000:01:00.0"},
+			}, {Name: "db01", Source: "proc"}},
+		},
+		GPUs: []model.GPU{{Address: "0000:01:00.0", Name: "L40S", PassedThrough: true, PassedThroughVM: "web01", NVMLStatus: "passed through"}},
+	}}
+	view := stripANSI(m.View())
+	for _, expected := range []string{
+		"[4 Virtualization]",
+		"platform         kvm/libvirt",
+		"vCPU 8 (1.33x overcommit)",
+		"web01 source=libvirt pid=4321 running",
+		"db01 source=proc pid=0 stopped",
+		"Passthrough / assigned devices",
+		"GPU L40S",
+		"assigned to web01",
+	} {
+		if !contains(view, expected) {
+			t.Fatalf("virtualization view missing %q:\n%s", expected, view)
+		}
+	}
+}
+
+func TestVirtualizationTabSelectionAndEnter(t *testing.T) {
+	m := modelState{tab: 3, thresholds: analyze.DefaultThresholds, snapshot: model.Snapshot{
+		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
+			{Name: "guest-a", PID: 1, Running: true},
+			{Name: "guest-b", PID: 2, Running: true},
+		}},
+	}}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	state := updated.(modelState)
+	if state.vmSel != 1 {
+		t.Fatalf("j did not move guest selection: %d", state.vmSel)
+	}
+	if state.offset != 0 {
+		t.Fatal("j scrolled instead of moving selection")
+	}
+	updated, _ = state.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	final := updated.(modelState)
+	if !final.detailMode {
+		t.Fatal("enter did not open the selected guest detail")
+	}
+	if !strings.Contains(final.View(), "guest-b") {
+		t.Fatalf("detail pane shows wrong guest:\n%s", final.View())
+	}
+	// Esc returns to the tab with the selection preserved.
+	updated, _ = final.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	state = updated.(modelState)
+	if state.detailMode || state.vmSel != 1 || state.tab != 3 {
+		t.Fatalf("esc lost selection context: %+v", state)
+	}
+}
+
+func TestVMSelectionClampsOnSnapshotShrink(t *testing.T) {
+	m := modelState{tab: 3, vmSel: 3, thresholds: analyze.DefaultThresholds}
+	updated, _ := m.Update(model.Snapshot{Virtualization: model.Virtualization{
+		VirtualMachines: []model.VirtualMachine{{Name: "only-one"}},
+	}})
+	if updated.(modelState).vmSel != 0 {
+		t.Fatalf("selection not clamped: %d", updated.(modelState).vmSel)
+	}
+}
+
+func TestProcessListLabelsGuestByPID(t *testing.T) {
+	snapshot := model.Snapshot{
+		TopProcesses:   []model.ProcessSample{{PID: 777, Name: "kvm", CPUPercent: 55, State: "R"}},
+		Virtualization: model.Virtualization{VirtualMachines: []model.VirtualMachine{{Name: "win2022", PID: 777}}},
+	}
+	view := stripANSI(viewTop(snapshot, nil, 0, false))
+	if !contains(view, "kvm (win2022)") {
+		t.Fatalf("guest label missing: %s", view)
 	}
 }

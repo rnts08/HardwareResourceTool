@@ -173,3 +173,26 @@ func TestWriteTextHeaderIncludesDuration(t *testing.T) {
 		t.Fatalf("duration missing from header: %s", view[:120])
 	}
 }
+
+func TestWriteTextPassthroughDevicesInVirtualizationSection(t *testing.T) {
+	result := model.Report{Snapshot: model.Snapshot{
+		Virtualization: model.Virtualization{QEMUDetected: true, VirtualMachines: []model.VirtualMachine{
+			{Name: "web01", PCIAddresses: []string{"0000:01:00.0"}},
+		}},
+		GPUs: []model.GPU{{Address: "0000:01:00.0", Name: "L40S", PassedThrough: true, NVMLStatus: "passed through"}},
+		PCI:  []model.PCIDevice{{Address: "0000:06:00.0", Class: "0x010802", Driver: "vfio-pci"}},
+	}}
+	view := render(t, result)
+	if !strings.Contains(view, "Passthrough device: 0000:01:00.0 L40S passed through (passed through), assigned to web01") {
+		t.Fatalf("GPU passthrough line missing:\n%s", view)
+	}
+	if !strings.Contains(view, "Passthrough device: 0000:06:00.0 class 0x010802 bound vfio-pci") {
+		t.Fatalf("PCI passthrough line missing:\n%s", view)
+	}
+	// Without virtualization there is no guest context, so no lines are emitted.
+	bare := result
+	bare.Snapshot.Virtualization = model.Virtualization{}
+	if strings.Contains(render(t, bare), "Passthrough device:") {
+		t.Fatal("passthrough lines emitted without virtualization")
+	}
+}

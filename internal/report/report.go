@@ -132,6 +132,11 @@ func WriteText(w io.Writer, result model.Report) error {
 				fmt.Fprintf(w, "  VM PCI devices: %v\n", vm.PCIAddresses)
 			}
 		}
+		if passthrough := passthroughLines(result.Snapshot); len(passthrough) > 0 {
+			for _, line := range passthrough {
+				fmt.Fprintf(w, "Passthrough device: %s\n", line)
+			}
+		}
 	}
 	limits := fmt.Sprintf("Limits: current files %d, current processes %d", result.Snapshot.System.OpenFiles, result.Snapshot.System.MaxProcesses)
 	if result.Snapshot.System.HostLimits.OpenFiles > 0 || result.Snapshot.System.HostLimits.MaxProcesses > 0 {
@@ -357,4 +362,54 @@ func linkStateLabel(active bool) string {
 		return "active"
 	}
 	return "inactive"
+}
+
+// passthroughLines describes devices held by guests: GPUs (with the owning
+// VM when known) plus PCI functions bound to vfio-pci or pci-stub. Emitted
+// only when KVM/QEMU virtualization is present so the lines stay inside the
+// virtualization section rather than hardware.
+func passthroughLines(snapshot model.Snapshot) []string {
+	if !snapshot.Virtualization.QEMUDetected && !snapshot.Virtualization.KVMAvailable {
+		return nil
+	}
+	vmByAddress := map[string]string{}
+	for _, vm := range snapshot.Virtualization.VirtualMachines {
+		for _, address := range vm.PCIAddresses {
+			vmByAddress[reportPCIKey(address)] = vm.Name
+		}
+	}
+	lines := make([]string, 0)
+	seen := map[string]bool{}
+	add := func(address, description string) {
+		key := reportPCIKey(address)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		if vm, ok := vmByAddress[key]; ok && vm != "" {
+			description += ", assigned to " + vm
+		}
+		lines = append(lines, fmt.Sprintf("%s %s", address, description))
+	}
+	for _, gpu := range snapshot.GPUs {
+		if gpu.PassedThrough {
+			name := gpu.Name
+			if name == "" {
+				name = "GPU"
+			}
+			add(gpu.Address, fmt.Sprintf("%s passed through (%s)", name, gpu.NVMLStatus))
+		}
+	}
+	for _, device := range snapshot.PCI {
+		driver := strings.ToLower(strings.TrimSpace(device.Driver))
+		if driver == "vfio-pci" || driver == "pci-stub" {
+			add(device.Address, fmt.Sprintf("class %s bound %s", device.Class, driver))
+		}
+	}
+	return lines
+}
+
+// reportPCIKey normalizes PCI addresses for map lookups in the report.
+func reportPCIKey(address string) string {
+	return strings.ToLower(strings.TrimSpace(address))
 }

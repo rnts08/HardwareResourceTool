@@ -200,8 +200,11 @@ sudo ./hardware-resources tui --interval 2s
 The interval has a 500 ms minimum. The dashboard keeps at most 60 snapshots
 for its sparklines. Use:
 
-- `1`-`7` to select Overview, Processes, CPU/Memory, Hardware, Storage,
-  Network, or Thermal.
+- `1`-`8` to select Overview, Processes, CPU/Memory, Virtualization,
+  Hardware, Storage, Network, or Thermal.
+- On Virtualization: `j`/`k` select a guest and Enter expands its full
+  detail pane; the window also shows platform detection, overcommit ratios,
+  balloon/QMP state, and passthrough devices.
 - `Tab`, Right arrow, or `l` for the next view; `Shift+Tab`, Left arrow, or
   `h` for the previous view.
 - `j`/`k` and Page Up/Down to scroll the active view; `g`/`G` jump to the top
@@ -226,8 +229,9 @@ for its sparklines. Use:
 Each window keeps its own scroll position, occupies the full terminal height,
 and the active tab is highlighted. The Processes window lists the ten
 highest-CPU host processes with per-second CPU rate, resident set size, and a
-friendly state such as Sleeping (S), and flags QEMU/KVM host processes with a
-`[QEMU]` marker.
+friendly state such as Sleeping (S); KVM host processes are labeled with
+their guest name in parentheses, for example `kvm (vm1)`, and unmatched QEMU
+binaries keep a `[QEMU]` marker.
 
 Collection is gated so a slow snapshot cannot overlap the next one. The TUI
 accepts the same threshold flags as `check`/`report`, so live findings match
